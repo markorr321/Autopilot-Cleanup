@@ -1,4 +1,4 @@
-# 🧹 Autopilot Cleanup Tool
+# 🧹 Autopilot Cleanup
 
 Interactive PowerShell tool for bulk device cleanup across Windows Autopilot, Microsoft Intune, and Microsoft Entra ID. Features automatic module installation, serial number validation, real-time deletion monitoring, and WhatIf mode for safe testing.
 
