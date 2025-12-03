@@ -177,7 +177,7 @@ Monitoring device removal...
 
 ## 👨‍💻 Author
 
-**Mark Orr** - Advanced Intune Reporting  
+**Mark Orr**
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-blue?style=flat&logo=linkedin)](https://www.linkedin.com/in/markorr321/)
 
 ## 📄 License
