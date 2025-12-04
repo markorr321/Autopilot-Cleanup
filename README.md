@@ -1,4 +1,4 @@
-# 🧹 Autopilot Cleanup
+# 🧹 Autopilot Cleanup Tool
 
 Interactive PowerShell tool for bulk device cleanup across Windows Autopilot, Microsoft Intune, and Microsoft Entra ID. Features automatic module installation, serial number validation, real-time deletion monitoring, and WhatIf mode for safe testing.
 
@@ -54,7 +54,7 @@ cd C:\Autopilot-Cleanup
 2. Connects to Microsoft Graph (you'll be prompted to sign in)
 3. Retrieves all Autopilot devices and enriches with Intune/Entra ID data
 4. Displays interactive grid view with all devices
-5. **Select the device(s) you want to remove and press OK (or hit Enter)**
+5. **Select device(s) using Ctrl+Click for multiple selection, then press OK**
 6. Confirms deletion from all three services
 7. Monitors removal progress in real-time
 
@@ -78,7 +78,8 @@ Preview what would be deleted without making actual changes:
 2. **Authentication** - Connects to Microsoft Graph with required scopes
 3. **Data Retrieval** - Fetches all Autopilot devices and enriches with Intune/Entra ID information
 4. **Device Selection** - Displays interactive Out-GridView where you select devices to remove
-   - **⚠️ Important**: Select the device(s) and click OK or press Enter to confirm selection
+   - **⚠️ Important**: Use Ctrl+Click to select multiple devices, then click OK to confirm
+   - Selection works like Windows Explorer (highlight-based, not checkboxes)
 5. **Deletion Process** - Removes selected devices in the following order:
    - Microsoft Intune (management layer)
    - Windows Autopilot (deployment service)
@@ -102,7 +103,14 @@ The Out-GridView displays the following information:
 | IntuneName | Device name in Intune |
 | EntraName | Device name in Entra ID |
 
-**✅ To select devices**: Check the checkbox next to each device you want to remove, then click **OK** or press **Enter**.
+**✅ To select devices**:
+- **Single device**: Click on the device row, then click **OK**
+- **Multiple devices**: Hold **Ctrl** and click on each device you want to select
+- **Range of devices**: Click the first device, hold **Shift**, and click the last device
+- **All devices**: Press **Ctrl+A** to select all
+- Click **OK** when finished selecting
+
+*Note: Out-GridView uses highlight selection (like Windows Explorer) rather than checkboxes. Use Ctrl+Click to build your multi-selection.*
 
 ## 📺 Example Output
 
@@ -177,7 +185,7 @@ Monitoring device removal...
 
 ## 👨‍💻 Author
 
-**Mark Orr**
+**Mark Orr** - Advanced Intune Reporting  
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-blue?style=flat&logo=linkedin)](https://www.linkedin.com/in/markorr321/)
 
 ## 📄 License
