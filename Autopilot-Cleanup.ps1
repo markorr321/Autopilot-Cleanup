@@ -30,7 +30,7 @@
     Preview mode that shows what would be deleted without performing actual deletions
 
 .NOTES
-    Author: Advanced Intune Reporting
+    Author: Mark Orr
     Requires: Microsoft Graph PowerShell SDK modules
     Version: 2.0
 #>
