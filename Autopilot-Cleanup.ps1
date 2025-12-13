@@ -557,21 +557,61 @@ if (-not (Test-GraphConnection)) {
     }
 }
 
-# Get all Autopilot devices
-$autopilotDevices = Get-AllAutopilotDevices
+# Bulk fetch all devices from all services
+Write-ColorOutput "Fetching all Autopilot devices..." "Yellow"
+$autopilotDevices = Get-GraphPagedResults -Uri "https://graph.microsoft.com/v1.0/deviceManagement/windowsAutopilotDeviceIdentities"
+Write-ColorOutput "Found $($autopilotDevices.Count) Autopilot devices" "Green"
 
 if ($autopilotDevices.Count -eq 0) {
     Write-ColorOutput "No Autopilot devices found. Exiting." "Red"
     exit 0
 }
 
+Write-ColorOutput "Fetching all Intune devices..." "Yellow"
+$allIntuneDevices = Get-GraphPagedResults -Uri "https://graph.microsoft.com/v1.0/deviceManagement/managedDevices"
+Write-ColorOutput "Found $($allIntuneDevices.Count) Intune devices" "Green"
+
+Write-ColorOutput "Fetching all Entra ID devices..." "Yellow"
+$allEntraDevices = Get-GraphPagedResults -Uri "https://graph.microsoft.com/v1.0/devices"
+Write-ColorOutput "Found $($allEntraDevices.Count) Entra ID devices" "Green"
+
+# Create HashSets/Hashtables for fast lookups
+$intuneBySerial = @{}
+$intuneByName = @{}
+foreach ($device in $allIntuneDevices) {
+    if ($device.serialNumber) {
+        $intuneBySerial[$device.serialNumber] = $device
+    }
+    if ($device.deviceName) {
+        $intuneByName[$device.deviceName] = $device
+    }
+}
+
+$entraByName = @{}
+foreach ($device in $allEntraDevices) {
+    if ($device.displayName) {
+        if (-not $entraByName.ContainsKey($device.displayName)) {
+            $entraByName[$device.displayName] = @()
+        }
+        $entraByName[$device.displayName] += $device
+    }
+}
+
 Write-ColorOutput ""
 Write-ColorOutput "Enriching device information..." "Cyan"
-Write-ColorOutput ""
 $enrichedDevices = foreach ($device in $autopilotDevices) {
-    $intuneDevice = Get-IntuneDevice -DeviceName $device.displayName -SerialNumber $device.serialNumber
-    $entraDevices = Get-EntraDeviceByName -DeviceName $device.displayName -SerialNumber $device.serialNumber
-    $entraDevice = if ($entraDevices -and $entraDevices.Count -gt 0) { $entraDevices[0] } else { $null }
+    # Fast local lookup instead of API calls
+    $intuneDevice = $null
+    if ($device.serialNumber -and $intuneBySerial.ContainsKey($device.serialNumber)) {
+        $intuneDevice = $intuneBySerial[$device.serialNumber]
+    } elseif ($device.displayName -and $intuneByName.ContainsKey($device.displayName)) {
+        $intuneDevice = $intuneByName[$device.displayName]
+    }
+    
+    $entraDevice = $null
+    if ($device.displayName -and $entraByName.ContainsKey($device.displayName)) {
+        $entraDevice = $entraByName[$device.displayName] | Select-Object -First 1
+    }
     
     # Create a meaningful display name
     $displayName = if ($device.displayName -and $device.displayName -ne "") { 
