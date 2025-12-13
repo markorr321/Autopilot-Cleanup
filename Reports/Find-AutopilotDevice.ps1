@@ -99,15 +99,18 @@ Write-ColorOutput ""
 
 # If no parameters provided, show interactive menu
 if (-not $DisplayName -and -not $DeviceId -and -not $ObjectId) {
-    Write-ColorOutput "Select search criteria:" "Cyan"
+    Write-ColorOutput "Where do you want to search?" "Cyan"
     Write-ColorOutput ""
-    Write-ColorOutput "  [1] Search by Display Name" "White"
-    Write-ColorOutput "  [2] Search by Entra Device ID" "White"
-    Write-ColorOutput "  [3] Search by Autopilot Object ID" "White"
-    Write-ColorOutput "  [4] Exit" "White"
+    Write-ColorOutput "  [1] Search Autopilot by Display Name" "White"
+    Write-ColorOutput "  [2] Search Autopilot by Entra Device ID" "White"
+    Write-ColorOutput "  [3] Search Autopilot by Autopilot Object ID" "White"
+    Write-ColorOutput "  [4] Search Entra ID by Display Name" "Yellow"
+    Write-ColorOutput "  [5] Search Entra ID by Device ID" "Yellow"
+    Write-ColorOutput "  [6] Search Entra ID by Object ID" "Yellow"
+    Write-ColorOutput "  [7] Exit" "White"
     Write-ColorOutput ""
     
-    $choice = Read-Host "Enter your choice (1-4)"
+    $choice = Read-Host "Enter your choice (1-7)"
     
     switch ($choice) {
         "1" {
@@ -116,6 +119,7 @@ if (-not $DisplayName -and -not $DeviceId -and -not $ObjectId) {
                 Write-ColorOutput "No display name entered. Exiting." "Yellow"
                 exit 0
             }
+            $script:SearchTarget = "Autopilot"
         }
         "2" {
             $DeviceId = Read-Host "Enter Entra Device ID (GUID)"
@@ -123,6 +127,7 @@ if (-not $DisplayName -and -not $DeviceId -and -not $ObjectId) {
                 Write-ColorOutput "No device ID entered. Exiting." "Yellow"
                 exit 0
             }
+            $script:SearchTarget = "Autopilot"
         }
         "3" {
             $ObjectId = Read-Host "Enter Autopilot Object ID (GUID)"
@@ -130,8 +135,33 @@ if (-not $DisplayName -and -not $DeviceId -and -not $ObjectId) {
                 Write-ColorOutput "No object ID entered. Exiting." "Yellow"
                 exit 0
             }
+            $script:SearchTarget = "Autopilot"
         }
         "4" {
+            $DisplayName = Read-Host "Enter Display Name"
+            if ([string]::IsNullOrWhiteSpace($DisplayName)) {
+                Write-ColorOutput "No display name entered. Exiting." "Yellow"
+                exit 0
+            }
+            $script:SearchTarget = "Entra"
+        }
+        "5" {
+            $DeviceId = Read-Host "Enter Entra Device ID (GUID)"
+            if ([string]::IsNullOrWhiteSpace($DeviceId)) {
+                Write-ColorOutput "No device ID entered. Exiting." "Yellow"
+                exit 0
+            }
+            $script:SearchTarget = "Entra"
+        }
+        "6" {
+            $ObjectId = Read-Host "Enter Entra Object ID (GUID)"
+            if ([string]::IsNullOrWhiteSpace($ObjectId)) {
+                Write-ColorOutput "No object ID entered. Exiting." "Yellow"
+                exit 0
+            }
+            $script:SearchTarget = "Entra"
+        }
+        "7" {
             Write-ColorOutput "Exiting." "Yellow"
             exit 0
         }
@@ -141,6 +171,8 @@ if (-not $DisplayName -and -not $DeviceId -and -not $ObjectId) {
         }
     }
     Write-ColorOutput ""
+} else {
+    $script:SearchTarget = "Autopilot"
 }
 
 if ($WhatIf) {
@@ -157,115 +189,234 @@ if (-not (Test-GraphConnection)) {
 }
 Write-ColorOutput ""
 
-Write-ColorOutput "Searching for Autopilot device..." "Cyan"
-Write-ColorOutput ""
-
-$foundDevices = @()
-
-# Search by DisplayName
-if ($DisplayName) {
-    Write-ColorOutput "Searching by DisplayName: $DisplayName" "Yellow"
-    $uri = "https://graph.microsoft.com/v1.0/deviceManagement/windowsAutopilotDeviceIdentities?`$filter=contains(displayName,'$DisplayName')"
-    try {
-        $results = (Invoke-MgGraphRequest -Uri $uri -Method GET).value
-        if ($results) {
-            $foundDevices += $results
-            Write-ColorOutput "  Found $($results.Count) device(s) by DisplayName" "Green"
-        } else {
-            Write-ColorOutput "  No devices found by DisplayName" "Yellow"
+# Search based on target (Autopilot or Entra)
+if ($script:SearchTarget -eq "Entra") {
+    Write-ColorOutput "Searching Entra ID..." "Cyan"
+    Write-ColorOutput ""
+    
+    $foundDevices = @()
+    
+    # Search Entra by DisplayName
+    if ($DisplayName) {
+        Write-ColorOutput "Searching by DisplayName: $DisplayName" "Yellow"
+        $uri = "https://graph.microsoft.com/v1.0/devices?`$filter=displayName eq '$DisplayName'"
+        try {
+            $results = (Invoke-MgGraphRequest -Uri $uri -Method GET).value
+            if ($results) {
+                $foundDevices += $results
+                Write-ColorOutput "  Found $($results.Count) device(s) by DisplayName" "Green"
+            } else {
+                Write-ColorOutput "  No devices found by DisplayName" "Yellow"
+            }
+        } catch {
+            Write-ColorOutput "  Error searching by DisplayName: $($_.Exception.Message)" "Red"
         }
-    } catch {
-        Write-ColorOutput "  Error searching by DisplayName: $($_.Exception.Message)" "Red"
     }
-}
-
-# Search by DeviceId (azureActiveDirectoryDeviceId)
-if ($DeviceId) {
-    Write-ColorOutput "Searching by DeviceId: $DeviceId" "Yellow"
-    $uri = "https://graph.microsoft.com/v1.0/deviceManagement/windowsAutopilotDeviceIdentities?`$filter=azureActiveDirectoryDeviceId eq '$DeviceId'"
-    try {
-        $results = (Invoke-MgGraphRequest -Uri $uri -Method GET).value
-        if ($results) {
-            $foundDevices += $results
-            Write-ColorOutput "  Found $($results.Count) device(s) by DeviceId" "Green"
-        } else {
-            Write-ColorOutput "  No devices found by DeviceId" "Yellow"
+    
+    # Search Entra by DeviceId
+    if ($DeviceId) {
+        Write-ColorOutput "Searching by DeviceId: $DeviceId" "Yellow"
+        $uri = "https://graph.microsoft.com/v1.0/devices?`$filter=deviceId eq '$DeviceId'"
+        try {
+            $results = (Invoke-MgGraphRequest -Uri $uri -Method GET).value
+            if ($results) {
+                $foundDevices += $results
+                Write-ColorOutput "  Found $($results.Count) device(s) by DeviceId" "Green"
+            } else {
+                Write-ColorOutput "  No devices found by DeviceId" "Yellow"
+            }
+        } catch {
+            Write-ColorOutput "  Error searching by DeviceId: $($_.Exception.Message)" "Red"
         }
-    } catch {
-        Write-ColorOutput "  Error searching by DeviceId: $($_.Exception.Message)" "Red"
     }
-}
-
-# Search by ObjectId (Autopilot id)
-if ($ObjectId) {
-    Write-ColorOutput "Searching by ObjectId: $ObjectId" "Yellow"
-    $uri = "https://graph.microsoft.com/v1.0/deviceManagement/windowsAutopilotDeviceIdentities/$ObjectId"
-    try {
-        $result = Invoke-MgGraphRequest -Uri $uri -Method GET
-        if ($result) {
-            $foundDevices += $result
-            Write-ColorOutput "  Found device by ObjectId" "Green"
+    
+    # Search Entra by ObjectId
+    if ($ObjectId) {
+        Write-ColorOutput "Searching by ObjectId: $ObjectId" "Yellow"
+        $uri = "https://graph.microsoft.com/v1.0/devices/$ObjectId"
+        try {
+            $result = Invoke-MgGraphRequest -Uri $uri -Method GET
+            if ($result) {
+                $foundDevices += $result
+                Write-ColorOutput "  Found device by ObjectId" "Green"
+            }
+        } catch {
+            Write-ColorOutput "  No device found by ObjectId" "Yellow"
         }
-    } catch {
-        Write-ColorOutput "  No device found by ObjectId" "Yellow"
     }
-}
-
-# Remove duplicates by id
-$uniqueDevices = $foundDevices | Sort-Object -Property id -Unique
-
-if ($uniqueDevices.Count -eq 0) {
-    Write-ColorOutput ""
-    Write-ColorOutput "No Autopilot devices found matching the criteria." "Red"
-    exit 0
-}
-
-Write-ColorOutput ""
-Write-ColorOutput "═══════════════════════════════════════════════════" "Magenta"
-Write-ColorOutput "Found $($uniqueDevices.Count) Autopilot device(s):" "Cyan"
-Write-ColorOutput "═══════════════════════════════════════════════════" "Magenta"
-
-foreach ($device in $uniqueDevices) {
-    Write-ColorOutput ""
-    Write-ColorOutput "  Display Name:    $($device.displayName)" "White"
-    Write-ColorOutput "  Serial Number:   $($device.serialNumber)" "White"
-    Write-ColorOutput "  Model:           $($device.model)" "White"
-    Write-ColorOutput "  Manufacturer:    $($device.manufacturer)" "White"
-    Write-ColorOutput "  Group Tag:       $($device.groupTag)" "White"
-    Write-ColorOutput "  Autopilot ID:    $($device.id)" "Gray"
-    Write-ColorOutput "  AAD Device ID:   $($device.azureActiveDirectoryDeviceId)" "Gray"
-}
-
-Write-ColorOutput ""
-Write-ColorOutput "═══════════════════════════════════════════════════" "Magenta"
-
-if ($WhatIf) {
-    Write-ColorOutput ""
-    Write-ColorOutput "WHATIF: Would delete the above device(s) from Autopilot" "Yellow"
-    exit 0
-}
-
-# Confirm deletion
-Write-ColorOutput ""
-$confirm = Read-Host "Do you want to DELETE these device(s) from Autopilot? (Y/N)"
-
-if ($confirm -ne 'Y' -and $confirm -ne 'y') {
-    Write-ColorOutput "Deletion cancelled." "Yellow"
-    exit 0
-}
-
-# Delete each device
-foreach ($device in $uniqueDevices) {
-    Write-ColorOutput ""
-    Write-ColorOutput "Deleting: $($device.displayName) (Serial: $($device.serialNumber))" "Cyan"
-    try {
-        $deleteUri = "https://graph.microsoft.com/v1.0/deviceManagement/windowsAutopilotDeviceIdentities/$($device.id)"
-        Invoke-MgGraphRequest -Uri $deleteUri -Method DELETE
-        Write-ColorOutput "✓ Successfully queued for deletion" "Green"
-    } catch {
-        Write-ColorOutput "✗ Error: $($_.Exception.Message)" "Red"
+    
+    # Remove duplicates by id
+    $uniqueDevices = $foundDevices | Sort-Object -Property id -Unique
+    
+    if ($uniqueDevices.Count -eq 0) {
+        Write-ColorOutput ""
+        Write-ColorOutput "No Entra ID devices found matching the criteria." "Red"
+        exit 0
     }
+    
+    Write-ColorOutput ""
+    Write-ColorOutput "═══════════════════════════════════════════════════" "Magenta"
+    Write-ColorOutput "Found $($uniqueDevices.Count) Entra ID device(s):" "Cyan"
+    Write-ColorOutput "═══════════════════════════════════════════════════" "Magenta"
+    
+    foreach ($device in $uniqueDevices) {
+        Write-ColorOutput ""
+        Write-ColorOutput "  Display Name:      $($device.displayName)" "White"
+        Write-ColorOutput "  Device ID:         $($device.deviceId)" "White"
+        Write-ColorOutput "  Object ID:         $($device.id)" "White"
+        Write-ColorOutput "  OS:                $($device.operatingSystem)" "White"
+        Write-ColorOutput "  OS Version:        $($device.operatingSystemVersion)" "White"
+        Write-ColorOutput "  Trust Type:        $($device.trustType)" "White"
+        Write-ColorOutput "  Is Managed:        $($device.isManaged)" "White"
+        Write-ColorOutput "  Registration Time: $($device.registrationDateTime)" "Gray"
+    }
+    
+    Write-ColorOutput ""
+    Write-ColorOutput "═══════════════════════════════════════════════════" "Magenta"
+    
+    if ($WhatIf) {
+        Write-ColorOutput ""
+        Write-ColorOutput "WHATIF: Would delete the above device(s) from Entra ID" "Yellow"
+        exit 0
+    }
+    
+    # Confirm deletion
+    Write-ColorOutput ""
+    $confirm = Read-Host "Do you want to DELETE these device(s) from Entra ID? (Y/N)"
+    
+    if ($confirm -ne 'Y' -and $confirm -ne 'y') {
+        Write-ColorOutput "Deletion cancelled." "Yellow"
+        exit 0
+    }
+    
+    # Delete each device
+    foreach ($device in $uniqueDevices) {
+        Write-ColorOutput ""
+        Write-ColorOutput "Deleting: $($device.displayName) (ID: $($device.id))" "Cyan"
+        try {
+            $deleteUri = "https://graph.microsoft.com/v1.0/devices/$($device.id)"
+            Invoke-MgGraphRequest -Uri $deleteUri -Method DELETE
+            Write-ColorOutput "✓ Successfully deleted from Entra ID" "Green"
+        } catch {
+            Write-ColorOutput "✗ Error: $($_.Exception.Message)" "Red"
+        }
+    }
+    
+    Write-ColorOutput ""
+    Write-ColorOutput "Deletion complete." "Green"
+    
+} else {
+    # Search Autopilot
+    Write-ColorOutput "Searching Autopilot..." "Cyan"
+    Write-ColorOutput ""
+    
+    $foundDevices = @()
+    
+    # Search by DisplayName
+    if ($DisplayName) {
+        Write-ColorOutput "Searching by DisplayName: $DisplayName" "Yellow"
+        $uri = "https://graph.microsoft.com/v1.0/deviceManagement/windowsAutopilotDeviceIdentities?`$filter=contains(displayName,'$DisplayName')"
+        try {
+            $results = (Invoke-MgGraphRequest -Uri $uri -Method GET).value
+            if ($results) {
+                $foundDevices += $results
+                Write-ColorOutput "  Found $($results.Count) device(s) by DisplayName" "Green"
+            } else {
+                Write-ColorOutput "  No devices found by DisplayName" "Yellow"
+            }
+        } catch {
+            Write-ColorOutput "  Error searching by DisplayName: $($_.Exception.Message)" "Red"
+        }
+    }
+    
+    # Search by DeviceId (azureActiveDirectoryDeviceId)
+    if ($DeviceId) {
+        Write-ColorOutput "Searching by DeviceId: $DeviceId" "Yellow"
+        $uri = "https://graph.microsoft.com/v1.0/deviceManagement/windowsAutopilotDeviceIdentities?`$filter=azureActiveDirectoryDeviceId eq '$DeviceId'"
+        try {
+            $results = (Invoke-MgGraphRequest -Uri $uri -Method GET).value
+            if ($results) {
+                $foundDevices += $results
+                Write-ColorOutput "  Found $($results.Count) device(s) by DeviceId" "Green"
+            } else {
+                Write-ColorOutput "  No devices found by DeviceId" "Yellow"
+            }
+        } catch {
+            Write-ColorOutput "  Error searching by DeviceId: $($_.Exception.Message)" "Red"
+        }
+    }
+    
+    # Search by ObjectId (Autopilot id)
+    if ($ObjectId) {
+        Write-ColorOutput "Searching by ObjectId: $ObjectId" "Yellow"
+        $uri = "https://graph.microsoft.com/v1.0/deviceManagement/windowsAutopilotDeviceIdentities/$ObjectId"
+        try {
+            $result = Invoke-MgGraphRequest -Uri $uri -Method GET
+            if ($result) {
+                $foundDevices += $result
+                Write-ColorOutput "  Found device by ObjectId" "Green"
+            }
+        } catch {
+            Write-ColorOutput "  No device found by ObjectId" "Yellow"
+        }
+    }
+    
+    # Remove duplicates by id
+    $uniqueDevices = $foundDevices | Sort-Object -Property id -Unique
+    
+    if ($uniqueDevices.Count -eq 0) {
+        Write-ColorOutput ""
+        Write-ColorOutput "No Autopilot devices found matching the criteria." "Red"
+        exit 0
+    }
+    
+    Write-ColorOutput ""
+    Write-ColorOutput "═══════════════════════════════════════════════════" "Magenta"
+    Write-ColorOutput "Found $($uniqueDevices.Count) Autopilot device(s):" "Cyan"
+    Write-ColorOutput "═══════════════════════════════════════════════════" "Magenta"
+    
+    foreach ($device in $uniqueDevices) {
+        Write-ColorOutput ""
+        Write-ColorOutput "  Display Name:    $($device.displayName)" "White"
+        Write-ColorOutput "  Serial Number:   $($device.serialNumber)" "White"
+        Write-ColorOutput "  Model:           $($device.model)" "White"
+        Write-ColorOutput "  Manufacturer:    $($device.manufacturer)" "White"
+        Write-ColorOutput "  Group Tag:       $($device.groupTag)" "White"
+        Write-ColorOutput "  Autopilot ID:    $($device.id)" "Gray"
+        Write-ColorOutput "  AAD Device ID:   $($device.azureActiveDirectoryDeviceId)" "Gray"
+    }
+    
+    Write-ColorOutput ""
+    Write-ColorOutput "═══════════════════════════════════════════════════" "Magenta"
+    
+    if ($WhatIf) {
+        Write-ColorOutput ""
+        Write-ColorOutput "WHATIF: Would delete the above device(s) from Autopilot" "Yellow"
+        exit 0
+    }
+    
+    # Confirm deletion
+    Write-ColorOutput ""
+    $confirm = Read-Host "Do you want to DELETE these device(s) from Autopilot? (Y/N)"
+    
+    if ($confirm -ne 'Y' -and $confirm -ne 'y') {
+        Write-ColorOutput "Deletion cancelled." "Yellow"
+        exit 0
+    }
+    
+    # Delete each device
+    foreach ($device in $uniqueDevices) {
+        Write-ColorOutput ""
+        Write-ColorOutput "Deleting: $($device.displayName) (Serial: $($device.serialNumber))" "Cyan"
+        try {
+            $deleteUri = "https://graph.microsoft.com/v1.0/deviceManagement/windowsAutopilotDeviceIdentities/$($device.id)"
+            Invoke-MgGraphRequest -Uri $deleteUri -Method DELETE
+            Write-ColorOutput "✓ Successfully queued for deletion" "Green"
+        } catch {
+            Write-ColorOutput "✗ Error: $($_.Exception.Message)" "Red"
+        }
+    }
+    
+    Write-ColorOutput ""
+    Write-ColorOutput "Deletion complete." "Green"
 }
-
-Write-ColorOutput ""
-Write-ColorOutput "Deletion complete." "Green"
