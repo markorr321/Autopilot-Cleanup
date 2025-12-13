@@ -345,14 +345,11 @@ function Get-AutopilotNotIntuneDevices {
             }
         }
         
-        # Create hashtable for Entra devices by name for efficient lookup
-        $script:entraByName = @{}
+        # Create hashtable for Entra devices by deviceId for efficient lookup
+        $script:entraByDeviceId = @{}
         foreach ($device in $script:allEntraDevices) {
-            if ($device.displayName) {
-                if (-not $script:entraByName.ContainsKey($device.displayName)) {
-                    $script:entraByName[$device.displayName] = @()
-                }
-                $script:entraByName[$device.displayName] += $device
+            if ($device.deviceId) {
+                $script:entraByDeviceId[$device.deviceId] = $device
             }
         }
 
@@ -368,7 +365,7 @@ function Get-AutopilotNotIntuneDevices {
                 DeploymentProfile = if ($_.deploymentProfileAssignmentStatus) { $_.deploymentProfileAssignmentStatus } else { "None" }
                 AutopilotId = $_.id
                 _DisplayName = $_.displayName
-                EntraDeviceId = if ($script:entraByName.ContainsKey($_.displayName)) { ($script:entraByName[$_.displayName] | Select-Object -First 1).id } else { "Not Found" }
+                EntraDeviceId = if ($_.azureActiveDirectoryDeviceId -and $script:entraByDeviceId.ContainsKey($_.azureActiveDirectoryDeviceId)) { $script:entraByDeviceId[$_.azureActiveDirectoryDeviceId].id } else { "Not Found" }
             }
         }
 
