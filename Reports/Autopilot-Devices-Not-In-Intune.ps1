@@ -13,7 +13,7 @@
     - Bulk retrieval of all Autopilot, Intune, and Entra ID devices using efficient pagination
     - Fast HashSet-based lookups to identify devices in Autopilot but not in Intune
     - Interactive grid view for device selection with detailed device information
-    - Removes selected devices from both Autopilot and Entra ID
+    - Removes selected devices from Autopilot
     - Validates serial numbers to prevent accidental deletion of duplicate device names
     - Real-time monitoring of deletion progress with automatic verification
     - Handles edge cases like pending deletions, duplicates, and missing devices
@@ -25,7 +25,6 @@
     Installation uses CurrentUser scope to avoid requiring administrator privileges.
     
     Required Permissions:
-    - Device.ReadWrite.All
     - DeviceManagementManagedDevices.ReadWrite.All
     - DeviceManagementServiceConfig.ReadWrite.All
 
@@ -126,7 +125,6 @@ function Connect-ToGraph {
     Write-ColorOutput "Connecting to Microsoft Graph..." "Yellow"
     
     $requiredScopes = @(
-        "Device.ReadWrite.All",
         "DeviceManagementManagedDevices.ReadWrite.All", 
         "DeviceManagementServiceConfig.ReadWrite.All"
     )
@@ -319,136 +317,6 @@ function Remove-AutopilotDevice {
     }
 }
 
-function Get-EntraDeviceByName {
-    param(
-        [string]$DeviceName,
-        [string]$SerialNumber = $null
-    )
-    
-    if ([string]::IsNullOrWhiteSpace($DeviceName)) {
-        return @()
-    }
-    
-    try {
-        $uri = "https://graph.microsoft.com/v1.0/devices?`$filter=displayName eq '$DeviceName'"
-        $AADDevices = (Invoke-MgGraphRequest -Uri $uri -Method GET).value
-        
-        if (-not $AADDevices -or $AADDevices.Count -eq 0) {
-            if (-not $script:MonitoringMode) {
-                Write-ColorOutput "  $DeviceName not found in Entra ID" "Yellow"
-                Write-ColorOutput ""
-            }
-            return @()
-        }
-        
-        # Log if we found duplicates
-        if ($AADDevices.Count -gt 1 -and -not $script:MonitoringMode) {
-            Write-ColorOutput "Found $($AADDevices.Count) devices with name '$DeviceName' in Entra ID. Will process all duplicates." "Yellow"
-        }
-        
-        # If we have a serial number, validate each device
-        if ($SerialNumber) {
-            $validatedDevices = @()
-            foreach ($AADDevice in $AADDevices) {
-                $deviceSerial = $null
-                if ($AADDevice.physicalIds) {
-                    foreach ($physicalId in $AADDevice.physicalIds) {
-                        if ($physicalId -match '\[SerialNumber\]:(.+)') {
-                            $deviceSerial = $matches[1].Trim()
-                            break
-                        }
-                    }
-                }
-                
-                # If serial numbers match or device has no serial, include it
-                if (-not $deviceSerial -or $deviceSerial -eq $SerialNumber) {
-                    $validatedDevices += $AADDevice
-                    if ($deviceSerial -and -not $script:MonitoringMode) {
-                        Write-ColorOutput "Validated Entra device: $($AADDevice.displayName) (Serial: $deviceSerial)" "Green"
-                    }
-                } elseif (-not $script:MonitoringMode) {
-                    Write-ColorOutput "Skipping Entra ID device with ID $($AADDevice.id) - serial number mismatch (Device: $deviceSerial, Expected: $SerialNumber)" "Yellow"
-                }
-            }
-            return $validatedDevices
-        }
-        
-        return $AADDevices
-    }
-    catch {
-        Write-ColorOutput "Error searching for Entra devices: $($_.Exception.Message)" "Red"
-        return @()
-    }
-}
-
-function Remove-EntraDevices {
-    param(
-        [array]$Devices,
-        [string]$DeviceName,
-        [string]$SerialNumber = $null
-    )
-    
-    if (-not $Devices -or $Devices.Count -eq 0) {
-        return @{ Success = $false; DeletedCount = 0; FailedCount = 0; Errors = @() }
-    }
-    
-    $deletedCount = 0
-    $failedCount = 0
-    $allErrors = @()
-    
-    foreach ($AADDevice in $Devices) {
-        # Extract serial number from physicalIds for logging
-        $deviceSerial = $null
-        if ($AADDevice.physicalIds) {
-            foreach ($physicalId in $AADDevice.physicalIds) {
-                if ($physicalId -match '\[SerialNumber\]:(.+)') {
-                    $deviceSerial = $matches[1].Trim()
-                    break
-                }
-            }
-        }
-        
-        try {
-            $uri = "https://graph.microsoft.com/v1.0/devices/$($AADDevice.id)"
-            
-            if ($WhatIf) {
-                Write-ColorOutput "WHATIF: Would remove Entra ID device: $($AADDevice.displayName) (ID: $($AADDevice.id), Serial: $deviceSerial)" "Yellow"
-                $deletedCount++
-            } else {
-                Invoke-MgGraphRequest -Uri $uri -Method DELETE
-                $deletedCount++
-                Write-ColorOutput "✓ Successfully queued device $DeviceName for removal from Entra ID" "Green"
-                Write-ColorOutput ""
-            }
-        }
-        catch {
-            $failedCount++
-            $errorMsg = $_.Exception.Message
-            $allErrors += $errorMsg
-            Write-ColorOutput "✗ Error removing device $DeviceName (ID: $($AADDevice.id)) from Entra ID: $errorMsg" "Red"
-        }
-    }
-    
-    # Determine overall success
-    $success = $false
-    if ($deletedCount -gt 0 -and $failedCount -eq 0) {
-        $success = $true
-        if ($deletedCount -gt 1) {
-            Write-ColorOutput "Successfully removed all $deletedCount duplicate devices named '$DeviceName' from Entra ID." "Green"
-        }
-    }
-    elseif ($deletedCount -gt 0 -and $failedCount -gt 0) {
-        Write-ColorOutput "Partial success: Deleted $deletedCount device(s), failed to delete $failedCount device(s) from Entra ID." "Yellow"
-    }
-    
-    return @{
-        Success = $success
-        DeletedCount = $deletedCount
-        FailedCount = $failedCount
-        Errors = $allErrors
-    }
-}
-
 function Get-AutopilotNotIntuneDevices {
     try {
         # Get all Autopilot devices
@@ -477,7 +345,7 @@ function Get-AutopilotNotIntuneDevices {
             }
         }
         
-        # Create hashtable for Entra devices by name
+        # Create hashtable for Entra devices by name for efficient lookup
         $script:entraByName = @{}
         foreach ($device in $script:allEntraDevices) {
             if ($device.displayName) {
@@ -492,21 +360,15 @@ function Get-AutopilotNotIntuneDevices {
         $notEnrolledDevices = $script:autopilotDevicesRaw | Where-Object {
             -not $intuneSerialNumbers.Contains($_.serialNumber)
         } | ForEach-Object {
-            # Check if device exists in Entra ID
-            $entraFound = "No"
-            if ($_.displayName -and $script:entraByName.ContainsKey($_.displayName)) {
-                $entraFound = "Yes"
-            }
-            
             [PSCustomObject]@{
                 SerialNumber = $_.serialNumber
                 Model = $_.model
                 Manufacturer = $_.manufacturer
                 GroupTag = if ($_.groupTag) { $_.groupTag } else { "None" }
                 DeploymentProfile = if ($_.deploymentProfileAssignmentStatus) { $_.deploymentProfileAssignmentStatus } else { "None" }
-                EntraFound = $entraFound
                 AutopilotId = $_.id
                 _DisplayName = $_.displayName
+                EntraDeviceId = if ($script:entraByName.ContainsKey($_.displayName)) { ($script:entraByName[$_.displayName] | Select-Object -First 1).id } else { "Not Found" }
             }
         }
 
@@ -563,7 +425,7 @@ if (-not $results -or $results.Count -eq 0) {
 }
 
 # Show interactive grid for device selection
-$selectedDevices = $results | Select-Object SerialNumber, Model, Manufacturer, GroupTag, DeploymentProfile, EntraFound | Out-GridView -Title "Select Devices to Remove from Autopilot and Entra ID (Not in Intune)" -PassThru
+$selectedDevices = $results | Select-Object SerialNumber, Model, Manufacturer, GroupTag, DeploymentProfile, EntraDeviceId | Out-GridView -Title "Select Devices to Remove from Autopilot (Not in Intune)" -PassThru
 
 if (-not $selectedDevices -or $selectedDevices.Count -eq 0) {
     Write-ColorOutput "No devices selected. Exiting." "Yellow"
@@ -598,7 +460,6 @@ foreach ($selectedDevice in $selectedDevices) {
         SerialNumber = $serialNumber
         DisplayName = $deviceName
         AutopilotId = $autopilotId
-        EntraID = @{ Found = $false; Success = $false; DeletedCount = 0; FailedCount = 0; Errors = @() }
         Autopilot = @{ Found = $false; Success = $false; Error = $null }
     }
     
@@ -608,21 +469,8 @@ foreach ($selectedDevice in $selectedDevices) {
     $deviceResult.Autopilot.Success = $autopilotResult.Success
     $deviceResult.Autopilot.Error = $autopilotResult.Error
     
-    # Remove from Entra ID (if device has a name to search by)
-    if ($deviceName) {
-        $entraDevices = Get-EntraDeviceByName -DeviceName $deviceName -SerialNumber $serialNumber
-        if ($entraDevices -and $entraDevices.Count -gt 0) {
-            $deviceResult.EntraID.Found = $true
-            $entraResult = Remove-EntraDevices -Devices $entraDevices -DeviceName $deviceName -SerialNumber $serialNumber
-            $deviceResult.EntraID.Success = $entraResult.Success
-            $deviceResult.EntraID.DeletedCount = $entraResult.DeletedCount
-            $deviceResult.EntraID.FailedCount = $entraResult.FailedCount
-            $deviceResult.EntraID.Errors = $entraResult.Errors
-        }
-    }
-    
     # Automatic monitoring after deletion (not in WhatIf mode)
-    if (-not $WhatIf -and ($deviceResult.Autopilot.Success -or $deviceResult.EntraID.Success)) {
+    if (-not $WhatIf -and $deviceResult.Autopilot.Success) {
         Write-ColorOutput ""
         Write-ColorOutput "Monitoring device removal..." "Cyan"
         
@@ -632,7 +480,6 @@ foreach ($selectedDevice in $selectedDevices) {
         $checkInterval = 5 # seconds
         
         $autopilotRemoved = -not $deviceResult.Autopilot.Success
-        $entraRemoved = -not $deviceResult.EntraID.Success
         
         do {
             Start-Sleep -Seconds $checkInterval
@@ -643,7 +490,7 @@ foreach ($selectedDevice in $selectedDevices) {
             $currentTime = Get-Date
             $elapsedMinutes = [math]::Round(($currentTime - $startTime).TotalMinutes, 1)
             
-            # Check Autopilot status first
+            # Check Autopilot status
             if (-not $autopilotRemoved) {
                 Write-ColorOutput "Waiting for device to be removed from Autopilot (Elapsed: $elapsedMinutes min)" "Yellow"
                 try {
@@ -659,31 +506,14 @@ foreach ($selectedDevice in $selectedDevices) {
                 }
             }
             
-            # Check Entra ID status (after Autopilot is removed)
-            if ($autopilotRemoved -and -not $entraRemoved -and $deviceName) {
-                Write-ColorOutput "Waiting for device to be removed from Entra ID (Elapsed: $elapsedMinutes min)" "Yellow"
-                try {
-                    $entraDevices = Get-EntraDeviceByName -DeviceName $deviceName -SerialNumber $serialNumber
-                    if (-not $entraDevices -or $entraDevices.Count -eq 0) {
-                        $entraRemoved = $true
-                        Write-ColorOutput "✓ Device removed from Entra ID" "Green"
-                        $deviceResult.EntraID.Verified = $true
-                    }
-                }
-                catch {
-                    Write-ColorOutput "  Error checking Entra ID: $($_.Exception.Message)" "Red"
-                }
-            }
-            
-            # Exit if all services are cleared
-            if ($autopilotRemoved -and $entraRemoved) {
+            # Exit if Autopilot removal is confirmed
+            if ($autopilotRemoved) {
                 $elapsedTime = [math]::Round(((Get-Date) - $startTime).TotalMinutes, 1)
                 
                 Write-ColorOutput ""
                 Write-ColorOutput "Device Serial Number: $serialNumber" "White"
                 Write-ColorOutput "Autopilot ID: $autopilotId" "White"
-                Write-ColorOutput ""
-                Write-ColorOutput "Removed from Autopilot and Entra ID" "Green"
+                Write-ColorOutput "Removed from Autopilot" "Green"
                 
                 # Play success notification
                 try {
