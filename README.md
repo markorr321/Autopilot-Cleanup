@@ -1,4 +1,4 @@
-# 🧹 Autopilot Cleanup Tool
+# 🧹 Autopilot Cleanup
 
 [![Watch a Demo](https://img.youtube.com/vi/SLvbbjJCvHo/hqdefault.jpg)](https://youtu.be/SLvbbjJCvHo?si=lavT9N1emduIkFCH)
 
