@@ -19,6 +19,11 @@ Interactive PowerShell tool for bulk device cleanup across Windows Autopilot, Mi
 - ⚙️ **Edge Case Management** - Handles pending deletions, missing devices, and other scenarios
 - 🔔 **Sound Notifications** - Plays success beeps when cleanup is complete
 
+## ✨ New Features
+
+- 🚀 **Fast Bulk Removal Mode** - Supports bulk removal **without status checking**, with results exported to a **CSV** for review  
+- 🏷️ **GroupTag Filtering in Out Grid View** - Out-GridView device selection now supports **filtering by GroupTag**
+
 ## 📋 Prerequisites
 
 - PowerShell 5.1 or later
