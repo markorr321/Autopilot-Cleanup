@@ -124,7 +124,7 @@ function Connect-ToGraph {
     )
     
     try {
-        Connect-MgGraph -Scopes $requiredScopes -NoWelcome
+        Connect-MgGraph -Scopes $requiredScopes -NoWelcome -WarningAction SilentlyContinue | Out-Null
         Write-ColorOutput "✓ Successfully connected to Microsoft Graph" "Green"
         return $true
     }
@@ -663,7 +663,7 @@ while ($continue) {
             $result = Remove-FromEntra -Devices $deviceData.Entra -WhatIfMode:$WhatIf
             
             if (-not $WhatIf -and $result.Success) {
-                Wait-ForRemoval -Name $DeviceName -Serial $SerialNumber -Platforms @("Entra")
+                Wait-ForRemoval -Name $DeviceName -Serial $SerialNumber -Platforms @("Entra") | Out-Null
             }
         }
         "2" {
@@ -671,7 +671,7 @@ while ($continue) {
             $result = Remove-FromIntune -Device $deviceData.Intune -WhatIfMode:$WhatIf
             
             if (-not $WhatIf -and $result.Success) {
-                Wait-ForRemoval -Name $DeviceName -Serial $SerialNumber -Platforms @("Intune")
+                Wait-ForRemoval -Name $DeviceName -Serial $SerialNumber -Platforms @("Intune") | Out-Null
             }
         }
         "3" {
@@ -679,7 +679,7 @@ while ($continue) {
             $result = Remove-FromAutopilot -Device $deviceData.Autopilot -WhatIfMode:$WhatIf
             
             if (-not $WhatIf -and $result.Success) {
-                Wait-ForRemoval -Name $DeviceName -Serial $SerialNumber -Platforms @("Autopilot")
+                Wait-ForRemoval -Name $DeviceName -Serial $SerialNumber -Platforms @("Autopilot") | Out-Null
             }
         }
         "4" {
@@ -698,7 +698,7 @@ while ($continue) {
                 if ($entraResult.Found) { $platformsToVerify += "Entra" }
                 
                 if ($platformsToVerify.Count -gt 0) {
-                    Wait-ForRemoval -Name $DeviceName -Serial $SerialNumber -Platforms $platformsToVerify
+                    Wait-ForRemoval -Name $DeviceName -Serial $SerialNumber -Platforms $platformsToVerify | Out-Null
                 }
             }
             else {

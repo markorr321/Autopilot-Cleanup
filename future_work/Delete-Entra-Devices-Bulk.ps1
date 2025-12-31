@@ -11,10 +11,14 @@ if (-not (Test-Path $DeviceListFile)) {
 }
 
 # Connect to Microsoft Graph if not already connected
-try {
-    Get-MgContext | Out-Null
-} catch {
-    Connect-MgGraph -Scopes "Device.ReadWrite.All"
+$context = Get-MgContext
+if (-not $context) {
+    try {
+        Connect-MgGraph -Scopes "Device.ReadWrite.All" -NoWelcome -WarningAction SilentlyContinue -ErrorAction Stop | Out-Null
+    } catch {
+        Write-Host "Failed to connect to Microsoft Graph. Exiting." -ForegroundColor Red
+        exit
+    }
 }
 
 # Load device names from file (one per line)
