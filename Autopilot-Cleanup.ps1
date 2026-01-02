@@ -130,7 +130,7 @@ function Connect-ToGraph {
     )
     
     try {
-        Connect-MgGraph -Scopes $requiredScopes -NoWelcome
+        Connect-MgGraph -Scopes $requiredScopes -NoWelcome -WarningAction SilentlyContinue -ErrorAction Stop | Out-Null
         Write-ColorOutput "✓ Successfully connected to Microsoft Graph" "Green"
         return $true
     }
@@ -545,13 +545,11 @@ function Remove-EntraDevices {
         }
         
         try {
-            $uri = "https://graph.microsoft.com/v1.0/devices/$($AADDevice.id)"
-            
             if ($WhatIf) {
                 Write-ColorOutput "WHATIF: Would remove Entra ID device: $($AADDevice.displayName) (ID: $($AADDevice.id), Serial: $deviceSerial)" "Yellow"
                 $deletedCount++
             } else {
-                Invoke-MgGraphRequest -Uri $uri -Method DELETE
+                Remove-MgDevice -DeviceId $AADDevice.id -ErrorAction Stop
                 $deletedCount++
                 Write-ColorOutput "  ✓ Entra ID" "Green"
             }
@@ -714,6 +712,149 @@ $selectedDevices = $enrichedDevices | Select-Object DisplayName, SerialNumber, M
 if (-not $selectedDevices -or $selectedDevices.Count -eq 0) {
     Write-ColorOutput "No devices selected. Exiting." "Yellow"
     exit 0
+}
+
+# Validate where each selected device exists before deletion
+Write-ColorOutput ""
+Write-ColorOutput "═══════════════════════════════════════════════════" "Cyan"
+Write-ColorOutput "  Validating Selected Device(s)" "Cyan"
+Write-ColorOutput "═══════════════════════════════════════════════════" "Cyan"
+Write-ColorOutput ""
+
+foreach ($selectedDevice in $selectedDevices) {
+    $fullDevice = $enrichedDevices | Where-Object { $_.SerialNumber -eq $selectedDevice.SerialNumber }
+    $deviceName = $fullDevice.DisplayName
+    $serialNumber = $fullDevice.SerialNumber
+
+    Write-ColorOutput "Searching with:" "Yellow"
+    Write-ColorOutput "  Device Name:   $deviceName" "White"
+    Write-ColorOutput "  Serial Number: $serialNumber" "White"
+    Write-ColorOutput ""
+
+    # Search Intune
+    Write-ColorOutput "  Searching Intune..." "Gray"
+    $intuneDevice = $null
+    try {
+        if ($serialNumber) {
+            $uri = "https://graph.microsoft.com/v1.0/deviceManagement/managedDevices?`$filter=serialNumber eq '$serialNumber'"
+            $response = Invoke-MgGraphRequest -Uri $uri -Method GET
+            if ($response.value -and $response.value.Count -gt 0) {
+                $intuneDevice = $response.value | Select-Object -First 1
+                Write-ColorOutput "    ✓ Found by serial number" "Green"
+            }
+        }
+        if (-not $intuneDevice -and $deviceName) {
+            $uri = "https://graph.microsoft.com/v1.0/deviceManagement/managedDevices?`$filter=deviceName eq '$deviceName'"
+            $response = Invoke-MgGraphRequest -Uri $uri -Method GET
+            if ($response.value -and $response.value.Count -gt 0) {
+                $intuneDevice = $response.value | Select-Object -First 1
+                Write-ColorOutput "    ✓ Found by device name" "Green"
+            }
+        }
+        if (-not $intuneDevice) {
+            Write-ColorOutput "    ✗ Not found" "Yellow"
+        }
+    }
+    catch {
+        Write-ColorOutput "    Error: $($_.Exception.Message)" "Red"
+    }
+
+    # Search Autopilot
+    Write-ColorOutput "  Searching Autopilot..." "Gray"
+    $autopilotDevice = $null
+    try {
+        if ($serialNumber) {
+            $uri = "https://graph.microsoft.com/v1.0/deviceManagement/windowsAutopilotDeviceIdentities?`$filter=contains(serialNumber,'$serialNumber')"
+            $response = Invoke-MgGraphRequest -Uri $uri -Method GET
+            if ($response.value -and $response.value.Count -gt 0) {
+                $autopilotDevice = $response.value | Where-Object { $_.serialNumber -eq $serialNumber } | Select-Object -First 1
+                if ($autopilotDevice) {
+                    Write-ColorOutput "    ✓ Found by serial number" "Green"
+                }
+            }
+        }
+        if (-not $autopilotDevice -and $deviceName) {
+            $uri = "https://graph.microsoft.com/v1.0/deviceManagement/windowsAutopilotDeviceIdentities?`$filter=displayName eq '$deviceName'"
+            $response = Invoke-MgGraphRequest -Uri $uri -Method GET
+            if ($response.value -and $response.value.Count -gt 0) {
+                $autopilotDevice = $response.value | Select-Object -First 1
+                Write-ColorOutput "    ✓ Found by device name" "Green"
+            }
+        }
+        if (-not $autopilotDevice) {
+            Write-ColorOutput "    ✗ Not found" "Yellow"
+        }
+    }
+    catch {
+        Write-ColorOutput "    Error: $($_.Exception.Message)" "Red"
+    }
+
+    # Search Entra ID
+    Write-ColorOutput "  Searching Entra ID..." "Gray"
+    $entraDevices = @()
+    try {
+        if ($deviceName) {
+            $uri = "https://graph.microsoft.com/v1.0/devices?`$filter=displayName eq '$deviceName'"
+            $response = Invoke-MgGraphRequest -Uri $uri -Method GET
+            if ($response.value -and $response.value.Count -gt 0) {
+                $entraDevices = @($response.value)
+                Write-ColorOutput "    ✓ Found $($response.value.Count) record(s) by device name" "Green"
+            }
+            else {
+                Write-ColorOutput "    ✗ Not found" "Yellow"
+            }
+        }
+        else {
+            Write-ColorOutput "    ⚠ Skipped (device name required for Entra ID search)" "Yellow"
+        }
+    }
+    catch {
+        Write-ColorOutput "    Error: $($_.Exception.Message)" "Red"
+    }
+
+    # Display search results summary
+    Write-ColorOutput ""
+    Write-ColorOutput "═══════════════════════════════════════════════════" "Magenta"
+    Write-ColorOutput "  Search Results" "Magenta"
+    Write-ColorOutput "═══════════════════════════════════════════════════" "Magenta"
+    Write-ColorOutput "  Searched Name:   $deviceName" "White"
+    Write-ColorOutput "  Searched Serial: $serialNumber" "White"
+    Write-ColorOutput "═══════════════════════════════════════════════════" "Magenta"
+    Write-ColorOutput ""
+
+    # Autopilot info
+    if ($autopilotDevice) {
+        Write-ColorOutput "  Autopilot:  ✓ FOUND" "Green"
+        Write-ColorOutput "              Name: $($autopilotDevice.displayName)" "White"
+        Write-ColorOutput "              Serial: $($autopilotDevice.serialNumber)" "White"
+        Write-ColorOutput "              Model: $($autopilotDevice.model)" "White"
+    } else {
+        Write-ColorOutput "  Autopilot:  ✗ NOT FOUND" "Yellow"
+    }
+    Write-ColorOutput ""
+
+    # Intune info
+    if ($intuneDevice) {
+        Write-ColorOutput "  Intune:     ✓ FOUND" "Green"
+        Write-ColorOutput "              Name: $($intuneDevice.deviceName)" "White"
+        Write-ColorOutput "              Serial: $($intuneDevice.serialNumber)" "White"
+        Write-ColorOutput "              OS: $($intuneDevice.operatingSystem)" "White"
+    } else {
+        Write-ColorOutput "  Intune:     ✗ NOT FOUND" "Yellow"
+    }
+    Write-ColorOutput ""
+
+    # Entra info
+    if ($entraDevices.Count -gt 0) {
+        Write-ColorOutput "  Entra ID:   ✓ FOUND ($($entraDevices.Count) record(s))" "Green"
+        foreach ($entraDevice in $entraDevices) {
+            Write-ColorOutput "              Name: $($entraDevice.displayName)" "White"
+            Write-ColorOutput "              Device ID: $($entraDevice.deviceId)" "White"
+        }
+    } else {
+        Write-ColorOutput "  Entra ID:   ✗ NOT FOUND" "Yellow"
+    }
+    Write-ColorOutput ""
 }
 
 # Ask user if they want to wipe devices first
