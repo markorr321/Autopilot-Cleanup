@@ -169,16 +169,27 @@ function Get-AllAutopilotDevices {
 function Get-EntraDeviceByName {
     param(
         [string]$DeviceName,
-        [string]$SerialNumber = $null
+        [string]$SerialNumber = $null,
+        [string]$EntraDeviceId = $null
     )
-    
-    if ([string]::IsNullOrWhiteSpace($DeviceName)) {
-        return @()
-    }
-    
+
+    $AADDevices = @()
+
     try {
-        $uri = "https://graph.microsoft.com/v1.0/devices?`$filter=displayName eq '$DeviceName'"
-        $AADDevices = (Invoke-MgGraphRequest -Uri $uri -Method GET).value
+        # First try by Azure AD Device ID (most reliable)
+        if ($EntraDeviceId) {
+            $uri = "https://graph.microsoft.com/v1.0/devices?`$filter=deviceId eq '$EntraDeviceId'"
+            $AADDevices = (Invoke-MgGraphRequest -Uri $uri -Method GET).value
+            if ($AADDevices -and $AADDevices.Count -gt 0) {
+                Write-ColorOutput "  Found Entra device by Azure AD Device ID" "Green"
+            }
+        }
+
+        # Fall back to display name search
+        if ((-not $AADDevices -or $AADDevices.Count -eq 0) -and -not [string]::IsNullOrWhiteSpace($DeviceName)) {
+            $uri = "https://graph.microsoft.com/v1.0/devices?`$filter=displayName eq '$DeviceName'"
+            $AADDevices = (Invoke-MgGraphRequest -Uri $uri -Method GET).value
+        }
         
         if (-not $AADDevices -or $AADDevices.Count -eq 0) {
             if (-not $script:MonitoringMode) {
@@ -646,12 +657,16 @@ foreach ($device in $allIntuneDevices) {
 }
 
 $entraByName = @{}
+$entraByDeviceId = @{}
 foreach ($device in $allEntraDevices) {
     if ($device.displayName) {
         if (-not $entraByName.ContainsKey($device.displayName)) {
             $entraByName[$device.displayName] = @()
         }
         $entraByName[$device.displayName] += $device
+    }
+    if ($device.deviceId) {
+        $entraByDeviceId[$device.deviceId] = $device
     }
 }
 
@@ -667,7 +682,12 @@ $enrichedDevices = foreach ($device in $autopilotDevices) {
     }
     
     $entraDevice = $null
-    if ($device.displayName -and $entraByName.ContainsKey($device.displayName)) {
+    # First try by Azure AD Device ID (most reliable)
+    if ($device.azureActiveDirectoryDeviceId -and $entraByDeviceId.ContainsKey($device.azureActiveDirectoryDeviceId)) {
+        $entraDevice = $entraByDeviceId[$device.azureActiveDirectoryDeviceId]
+    }
+    # Fall back to display name
+    elseif ($device.displayName -and $entraByName.ContainsKey($device.displayName)) {
         $entraDevice = $entraByName[$device.displayName] | Select-Object -First 1
     }
     
@@ -691,7 +711,6 @@ $enrichedDevices = foreach ($device in $autopilotDevices) {
         Model = $device.model
         Manufacturer = $device.manufacturer
         GroupTag = if ($device.groupTag) { $device.groupTag } else { "None" }
-        DeploymentProfile = if ($device.deploymentProfileAssignmentStatus) { $device.deploymentProfileAssignmentStatus } else { "None" }
         IntuneFound = if ($intuneDevice) { "Yes" } else { "No" }
         IntuneId = if ($intuneDevice) { $intuneDevice.id } else { $null }
         IntuneName = if ($intuneDevice) { $intuneDevice.deviceName } else { "N/A" }
@@ -707,7 +726,7 @@ $enrichedDevices = foreach ($device in $autopilotDevices) {
 }
 
 # Show interactive grid for device selection
-$selectedDevices = $enrichedDevices | Select-Object DisplayName, SerialNumber, Model, Manufacturer, GroupTag, DeploymentProfile, IntuneFound, EntraFound, IntuneName, EntraName | Out-GridView -Title "Select Devices to Remove from All Services" -PassThru
+$selectedDevices = $enrichedDevices | Select-Object DisplayName, SerialNumber, Model, Manufacturer, GroupTag, IntuneFound, EntraFound, IntuneName, EntraName | Out-GridView -Title "Select Devices to Remove from All Services" -PassThru
 
 if (-not $selectedDevices -or $selectedDevices.Count -eq 0) {
     Write-ColorOutput "No devices selected. Exiting." "Yellow"
@@ -792,20 +811,28 @@ foreach ($selectedDevice in $selectedDevices) {
     # Search Entra ID
     Write-ColorOutput "  Searching Entra ID..." "Gray"
     $entraDevices = @()
+    $entraDeviceId = $fullDevice.EntraDeviceId
     try {
-        if ($deviceName) {
+        # First try by Azure AD Device ID from Autopilot record (most reliable)
+        if ($entraDeviceId) {
+            $uri = "https://graph.microsoft.com/v1.0/devices?`$filter=deviceId eq '$entraDeviceId'"
+            $response = Invoke-MgGraphRequest -Uri $uri -Method GET
+            if ($response.value -and $response.value.Count -gt 0) {
+                $entraDevices = @($response.value)
+                Write-ColorOutput "    ✓ Found by Azure AD Device ID" "Green"
+            }
+        }
+        # Fall back to display name search if not found by ID
+        if ($entraDevices.Count -eq 0 -and $deviceName) {
             $uri = "https://graph.microsoft.com/v1.0/devices?`$filter=displayName eq '$deviceName'"
             $response = Invoke-MgGraphRequest -Uri $uri -Method GET
             if ($response.value -and $response.value.Count -gt 0) {
                 $entraDevices = @($response.value)
                 Write-ColorOutput "    ✓ Found $($response.value.Count) record(s) by device name" "Green"
             }
-            else {
-                Write-ColorOutput "    ✗ Not found" "Yellow"
-            }
         }
-        else {
-            Write-ColorOutput "    ⚠ Skipped (device name required for Entra ID search)" "Yellow"
+        if ($entraDevices.Count -eq 0) {
+            Write-ColorOutput "    ✗ Not found" "Yellow"
         }
     }
     catch {
@@ -1024,7 +1051,8 @@ foreach ($selectedDevice in $selectedDevices) {
     $deviceResult.Autopilot.Error = $autopilotResult.Error
     
     # Remove from Entra ID
-    $entraDevices = Get-EntraDeviceByName -DeviceName $deviceName -SerialNumber $serialNumber
+    $entraDeviceId = $fullDevice.EntraDeviceId
+    $entraDevices = Get-EntraDeviceByName -DeviceName $deviceName -SerialNumber $serialNumber -EntraDeviceId $entraDeviceId
     if ($entraDevices -and $entraDevices.Count -gt 0) {
         $deviceResult.EntraID.Found = $true
         $entraResult = Remove-EntraDevices -Devices $entraDevices -DeviceName $deviceName -SerialNumber $serialNumber
@@ -1116,7 +1144,7 @@ foreach ($selectedDevice in $selectedDevices) {
             if ($autopilotRemoved -and $intuneRemoved -and -not $entraRemoved) {
                 Write-ColorOutput "Waiting for 1 of 1 to be removed from Entra ID (Elapsed: $elapsedMinutes min)" "Yellow"
                 try {
-                    $entraDevices = Get-EntraDeviceByName -DeviceName $deviceName -SerialNumber $serialNumber
+                    $entraDevices = Get-EntraDeviceByName -DeviceName $deviceName -SerialNumber $serialNumber -EntraDeviceId $entraDeviceId
                     if (-not $entraDevices -or $entraDevices.Count -eq 0) {
                         $entraRemoved = $true
                         Write-ColorOutput "✓ Device removed from Entra ID" "Green"
