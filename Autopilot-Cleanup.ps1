@@ -595,6 +595,11 @@ function Remove-EntraDevices {
 
 # Main execution
 Clear-Host
+
+# Initialize script-level variables
+$script:MonitoringMode = $false
+$script:NoLoggingMode = $false
+
 Write-ColorOutput "=================================================" "Magenta"
 Write-ColorOutput "    Intune and Autopilot Cleanup PS" "Magenta"
 Write-ColorOutput "=================================================" "Magenta"
@@ -885,75 +890,78 @@ foreach ($selectedDevice in $selectedDevices) {
 }
 
 # Ask user if they want to wipe devices first
-Write-ColorOutput ""
-Write-ColorOutput "═══════════════════════════════════════════════════" "Magenta"
-Write-ColorOutput "  Selected $($selectedDevices.Count) device(s)" "Cyan"
-Write-ColorOutput "═══════════════════════════════════════════════════" "Magenta"
-Write-ColorOutput ""
-Write-ColorOutput "What action do you want to perform?" "Cyan"
-Write-ColorOutput ""
-Write-ColorOutput "  STANDARD (monitors removal status):" "White"
-Write-ColorOutput "  [1] Remove records only" "White"
-Write-ColorOutput "  [2] WIPE device(s) + remove all records" "Red"
-Write-ColorOutput ""
-Write-ColorOutput "  FAST (skips status checks, exports CSV):" "Green"
-Write-ColorOutput "  [3] Remove records only" "Green"
-Write-ColorOutput "  [4] WIPE device(s) + remove all records" "Red"
-Write-ColorOutput ""
-Write-ColorOutput "  [5] Cancel" "Gray"
-Write-ColorOutput ""
+$validChoice = $false
+while (-not $validChoice) {
+    Write-ColorOutput ""
+    Write-ColorOutput "═══════════════════════════════════════════════════" "Magenta"
+    Write-ColorOutput "  Selected $($selectedDevices.Count) device(s)" "Cyan"
+    Write-ColorOutput "═══════════════════════════════════════════════════" "Magenta"
+    Write-ColorOutput ""
+    Write-ColorOutput "What action do you want to perform?" "Cyan"
+    Write-ColorOutput ""
+    Write-ColorOutput "  STANDARD (monitors removal status):" "White"
+    Write-ColorOutput "  [1] Remove records only" "White"
+    Write-ColorOutput "  [2] WIPE device(s) + remove all records" "Red"
+    Write-ColorOutput ""
+    Write-ColorOutput "  FAST (skips status checks, exports CSV):" "Green"
+    Write-ColorOutput "  [3] Remove records only" "Green"
+    Write-ColorOutput "  [4] WIPE device(s) + remove all records" "Red"
+    Write-ColorOutput ""
+    Write-ColorOutput "  [5] Cancel" "Gray"
+    Write-ColorOutput ""
 
-$actionChoice = Read-Host "Enter your choice (1-5)"
+    $actionChoice = Read-Host "Enter your choice (1-5)"
 
-# Initialize no-logging mode flag
-$script:NoLoggingMode = $false
-
-switch ($actionChoice) {
-    "1" {
-        $performWipe = $false
-        Write-ColorOutput ""
-        Write-ColorOutput "Mode: Remove records only" "Cyan"
-    }
-    "2" {
-        $performWipe = $true
-        Write-ColorOutput ""
-        Write-ColorOutput "Mode: WIPE and remove records" "Yellow"
-        Write-ColorOutput ""
-        Write-ColorOutput "⚠️  WARNING: This will FACTORY RESET the selected device(s)!" "Red"
-        $wipeConfirm = Read-Host "Type 'WIPE' to confirm"
-        if ($wipeConfirm -ne 'WIPE') {
-            Write-ColorOutput "Wipe cancelled. Exiting." "Yellow"
+    switch ($actionChoice) {
+        "1" {
+            $performWipe = $false
+            $validChoice = $true
+            Write-ColorOutput ""
+            Write-ColorOutput "Mode: Remove records only" "Cyan"
+        }
+        "2" {
+            $performWipe = $true
+            $validChoice = $true
+            Write-ColorOutput ""
+            Write-ColorOutput "Mode: WIPE and remove records" "Yellow"
+            Write-ColorOutput ""
+            Write-ColorOutput "⚠️  WARNING: This will FACTORY RESET the selected device(s)!" "Red"
+            $wipeConfirm = Read-Host "Type 'WIPE' to confirm"
+            if ($wipeConfirm -ne 'WIPE') {
+                Write-ColorOutput "Wipe cancelled. Exiting." "Yellow"
+                exit 0
+            }
+        }
+        "3" {
+            $performWipe = $false
+            $script:NoLoggingMode = $true
+            $validChoice = $true
+            Write-ColorOutput ""
+            Write-ColorOutput "Mode: Remove records only - SKIP STATUS CHECKS" "Cyan"
+            Write-ColorOutput "Status checks will be skipped. Commands will be sent and devices marked as processed." "Yellow"
+        }
+        "4" {
+            $performWipe = $true
+            $script:NoLoggingMode = $true
+            $validChoice = $true
+            Write-ColorOutput ""
+            Write-ColorOutput "Mode: WIPE and remove records - SKIP STATUS CHECKS" "Yellow"
+            Write-ColorOutput "Status checks will be skipped. Commands will be sent and devices marked as processed." "Yellow"
+            Write-ColorOutput ""
+            Write-ColorOutput "⚠️  WARNING: This will FACTORY RESET the selected device(s)!" "Red"
+            $wipeConfirm = Read-Host "Type 'WIPE' to confirm"
+            if ($wipeConfirm -ne 'WIPE') {
+                Write-ColorOutput "Wipe cancelled. Exiting." "Yellow"
+                exit 0
+            }
+        }
+        "5" {
+            Write-ColorOutput "Cancelled." "Yellow"
             exit 0
         }
-    }
-    "3" {
-        $performWipe = $false
-        $script:NoLoggingMode = $true
-        Write-ColorOutput ""
-        Write-ColorOutput "Mode: Remove records only - SKIP STATUS CHECKS" "Cyan"
-        Write-ColorOutput "Status checks will be skipped. Commands will be sent and devices marked as processed." "Yellow"
-    }
-    "4" {
-        $performWipe = $true
-        $script:NoLoggingMode = $true
-        Write-ColorOutput ""
-        Write-ColorOutput "Mode: WIPE and remove records - SKIP STATUS CHECKS" "Yellow"
-        Write-ColorOutput "Status checks will be skipped. Commands will be sent and devices marked as processed." "Yellow"
-        Write-ColorOutput ""
-        Write-ColorOutput "⚠️  WARNING: This will FACTORY RESET the selected device(s)!" "Red"
-        $wipeConfirm = Read-Host "Type 'WIPE' to confirm"
-        if ($wipeConfirm -ne 'WIPE') {
-            Write-ColorOutput "Wipe cancelled. Exiting." "Yellow"
-            exit 0
+        default {
+            Write-ColorOutput "Invalid choice. Please try again." "Red"
         }
-    }
-    "5" {
-        Write-ColorOutput "Cancelled." "Yellow"
-        exit 0
-    }
-    default {
-        Write-ColorOutput "Invalid choice. Exiting." "Red"
-        exit 1
     }
 }
 
