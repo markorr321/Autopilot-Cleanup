@@ -1,5 +1,3 @@
-#Requires -Modules Microsoft.Graph.Authentication, Microsoft.Graph.DeviceManagement, Microsoft.Graph.Identity.DirectoryManagement
-
 <#
 .SYNOPSIS
     Bulk removal tool for devices from Windows Autopilot, Microsoft Intune, and Microsoft Entra ID
