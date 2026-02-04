@@ -724,7 +724,8 @@ function Remove-EntraDevices {
                 Write-ColorOutput "WHATIF: Would remove Entra ID device: $($AADDevice.displayName) (ID: $($AADDevice.id), Serial: $deviceSerial)" "Yellow"
                 $deletedCount++
             } else {
-                Remove-MgDevice -DeviceId $AADDevice.id -ErrorAction Stop
+                $uri = "https://graph.microsoft.com/v1.0/devices/$($AADDevice.id)"
+                Invoke-MgGraphRequest -Uri $uri -Method DELETE
                 $deletedCount++
                 Write-ColorOutput "  ✓ Entra ID" "Green"
             }
@@ -775,9 +776,7 @@ Write-ColorOutput ""
 
 # Define required modules
 $requiredModules = @(
-    'Microsoft.Graph.Authentication',
-    'Microsoft.Graph.DeviceManagement',
-    'Microsoft.Graph.Identity.DirectoryManagement'
+    'Microsoft.Graph.Authentication'
 )
 
 # Check and install required modules
