@@ -9,10 +9,10 @@ Interactive PowerShell tool for bulk device cleanup across Windows Autopilot, Mi
 
 ## 📸 Screenshots
 
-| Device Selection Grid | Device Verification | Removal Monitoring |
-|:---:|:---:|:---:|
-| ![GUI](Images/GUI.png) | ![Device Verification](Images/Device-Verification.png) | ![Removal Verification](Images/Removal-Verficiation.png) |
-| WPF grid with search & multi-select | Serial number validation & action menu | Real-time removal progress tracking |
+| Device Selection Grid | Device Verification | Removal Monitoring | Single Device Removal |
+|:---:|:---:|:---:|:---:|
+| ![GUI](Images/GUI.png) | ![Device Verification](Images/Device-Verification.png) | ![Removal Verification](Images/Removal-Verficiation.png) | ![Single Device](Images/Single-Device.png) |
+| WPF grid with search & multi-select | Serial number validation & action menu | Real-time removal progress tracking | Direct serial number targeting |
 
 ## ✨ Features
 
@@ -127,6 +127,7 @@ Preview what would be deleted without making actual changes:
 | `-WhatIf` | Switch | No | Preview mode - shows what would be deleted without performing actual deletions |
 | `-ClientId` | String | No | Client ID of a custom app registration for delegated auth |
 | `-TenantId` | String | No | Tenant ID to use with the custom app registration |
+| `-SerialNumber` | String[] | No | One or more serial numbers to target directly, bypasses the WPF grid |
 
 ## 🔧 How It Works
 
