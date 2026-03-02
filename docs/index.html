@@ -438,6 +438,82 @@
             color: var(--text-muted);
         }
 
+        /* Screenshots */
+        .screenshots-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .screenshot-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+            transition: border-color 0.2s, transform 0.2s;
+            cursor: pointer;
+        }
+
+        .screenshot-card:hover {
+            border-color: rgba(228, 77, 144, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .screenshot-card img {
+            width: 100%;
+            display: block;
+        }
+
+        .screenshot-label {
+            padding: 0.8rem 1rem;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            text-align: center;
+            border-top: 1px solid var(--border);
+        }
+
+        /* Lightbox */
+        .lightbox {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 1000;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(8px);
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+            cursor: pointer;
+        }
+
+        .lightbox.active {
+            display: flex;
+        }
+
+        .lightbox img {
+            max-width: 90vw;
+            max-height: 90vh;
+            border-radius: 8px;
+            box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+        }
+
+        .lightbox-close {
+            position: absolute;
+            top: 1.5rem;
+            right: 2rem;
+            font-size: 2rem;
+            color: white;
+            opacity: 0.7;
+            cursor: pointer;
+            background: none;
+            border: none;
+            font-family: inherit;
+        }
+
+        .lightbox-close:hover {
+            opacity: 1;
+        }
+
         /* Footer */
         footer {
             text-align: center;
@@ -573,6 +649,26 @@
                 <div class="play-btn">
                     <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
                 </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Screenshots -->
+    <section>
+        <h2 class="section-title">Screenshots</h2>
+        <p class="section-subtitle">The interactive device cleanup experience.</p>
+        <div class="screenshots-grid">
+            <div class="screenshot-card" onclick="openLightbox(this.querySelector('img'))">
+                <img src="GUI.png" alt="Device Selection Grid">
+                <div class="screenshot-label">WPF Device Selection Grid</div>
+            </div>
+            <div class="screenshot-card" onclick="openLightbox(this.querySelector('img'))">
+                <img src="Device-Verification.png" alt="Device Verification">
+                <div class="screenshot-label">Device Verification &amp; Action Menu</div>
+            </div>
+            <div class="screenshot-card" onclick="openLightbox(this.querySelector('img'))">
+                <img src="Removal-Verficiation.png" alt="Removal Monitoring">
+                <div class="screenshot-label">Real-Time Removal Monitoring</div>
             </div>
         </div>
     </section>
@@ -715,5 +811,27 @@
         </div>
         <p>by Mark Orr</p>
     </footer>
+    <!-- Lightbox Modal -->
+    <div id="lightbox" class="lightbox" onclick="closeLightbox()">
+        <button class="lightbox-close" onclick="event.stopPropagation(); closeLightbox();">&times;</button>
+        <img id="lightbox-img" src="" alt="">
+    </div>
+
+    <script>
+        function openLightbox(img) {
+            var lb = document.getElementById('lightbox');
+            document.getElementById('lightbox-img').src = img.src;
+            document.getElementById('lightbox-img').alt = img.alt;
+            lb.classList.add('active');
+        }
+
+        function closeLightbox() {
+            document.getElementById('lightbox').classList.remove('active');
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') closeLightbox();
+        });
+    </script>
 </body>
 </html>

@@ -7,6 +7,13 @@
 
 Interactive PowerShell tool for bulk device cleanup across Windows Autopilot, Microsoft Intune, and Microsoft Entra ID. Features automatic module installation, serial number validation, real-time deletion monitoring, and WhatIf mode for safe testing.
 
+## 📸 Screenshots
+
+| Device Selection Grid | Device Verification | Removal Monitoring |
+|:---:|:---:|:---:|
+| ![GUI](Images/GUI.png) | ![Device Verification](Images/Device-Verification.png) | ![Removal Verification](Images/Removal-Verficiation.png) |
+| WPF grid with search & multi-select | Serial number validation & action menu | Real-time removal progress tracking |
+
 ## ✨ Features
 
 - 📦 **Automatic Module Installation** - Checks for required Microsoft Graph modules and prompts to install missing dependencies
