@@ -1,6 +1,6 @@
 ﻿@{
     RootModule        = 'AutopilotCleanup.psm1'
-    ModuleVersion     = '2.2.2'
+    ModuleVersion     = '2.2.3'
     GUID              = '2c66f0a3-dcb1-4050-8913-142c0b2991cd'
     Author            = 'Mark Orr'
     CompanyName       = 'Orr365'
@@ -49,6 +49,10 @@
             ProjectUri = 'https://github.com/markorr321/Autopilot-Cleanup'
 
             ReleaseNotes = @'
+## 2.2.3
+- Targeted API queries for -SerialNumber (no longer fetches entire tenant)
+- WPF grid performance improvements (UI virtualization, CollectionView filtering, search debounce)
+
 ## 2.2.2
 - Fix SerialNumber parameter variable collision causing type conversion errors during device removal
 
