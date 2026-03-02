@@ -332,19 +332,19 @@
     foreach ($selectedDevice in $selectedDevices) {
         $fullDevice = $enrichedDevices | Where-Object { $_.SerialNumber -eq $selectedDevice.SerialNumber }
         $deviceName = $fullDevice.DisplayName
-        $serialNumber = $fullDevice.SerialNumber
+        $deviceSerial = $fullDevice.SerialNumber
 
         Write-ColorOutput "Searching with:" "Yellow"
         Write-ColorOutput "  Device Name:   $deviceName" "White"
-        Write-ColorOutput "  Serial Number: $serialNumber" "White"
+        Write-ColorOutput "  Serial Number: $deviceSerial" "White"
         Write-ColorOutput ""
 
         # Search Intune
         Write-ColorOutput "  Searching Intune..." "Gray"
         $intuneDevice = $null
         try {
-            if ($serialNumber) {
-                $uri = "https://graph.microsoft.com/v1.0/deviceManagement/managedDevices?`$filter=serialNumber eq '$serialNumber'"
+            if ($deviceSerial) {
+                $uri = "https://graph.microsoft.com/v1.0/deviceManagement/managedDevices?`$filter=serialNumber eq '$deviceSerial'"
                 $response = Invoke-MgGraphRequest -Uri $uri -Method GET
                 if ($response.value -and $response.value.Count -gt 0) {
                     $intuneDevice = $response.value | Select-Object -First 1
@@ -371,11 +371,11 @@
         Write-ColorOutput "  Searching Autopilot..." "Gray"
         $autopilotDevice = $null
         try {
-            if ($serialNumber) {
-                $uri = "https://graph.microsoft.com/v1.0/deviceManagement/windowsAutopilotDeviceIdentities?`$filter=contains(serialNumber,'$serialNumber')"
+            if ($deviceSerial) {
+                $uri = "https://graph.microsoft.com/v1.0/deviceManagement/windowsAutopilotDeviceIdentities?`$filter=contains(serialNumber,'$deviceSerial')"
                 $response = Invoke-MgGraphRequest -Uri $uri -Method GET
                 if ($response.value -and $response.value.Count -gt 0) {
-                    $autopilotDevice = $response.value | Where-Object { $_.serialNumber -eq $serialNumber } | Select-Object -First 1
+                    $autopilotDevice = $response.value | Where-Object { $_.serialNumber -eq $deviceSerial } | Select-Object -First 1
                     if ($autopilotDevice) {
                         Write-ColorOutput "    ✓ Found by serial number" "Green"
                     }
@@ -433,7 +433,7 @@
         Write-ColorOutput "Search Results" "Magenta"
         Write-ColorOutput "------------------------------" "DarkGray"
         Write-ColorOutput "  Searched Name:   $deviceName" "White"
-        Write-ColorOutput "  Searched Serial: $serialNumber" "White"
+        Write-ColorOutput "  Searched Serial: $deviceSerial" "White"
         Write-ColorOutput ""
 
         # Autopilot info
@@ -552,10 +552,10 @@
         # Find the full device info
         $fullDevice = $enrichedDevices | Where-Object { $_.SerialNumber -eq $selectedDevice.SerialNumber }
         $deviceName = $fullDevice.DisplayName
-        $serialNumber = $fullDevice.SerialNumber
+        $deviceSerial = $fullDevice.SerialNumber
 
         $deviceResult = [PSCustomObject]@{
-            SerialNumber = $serialNumber
+            SerialNumber = $deviceSerial
             DisplayName = $deviceName
             EntraID = @{ Found = $false; Success = $false; DeletedCount = 0; FailedCount = 0; Errors = @() }
             Intune = @{ Found = $false; Success = $false; Error = $null }
@@ -564,12 +564,12 @@
         }
 
         Write-ColorOutput ""
-        Write-ColorOutput "Processing: $deviceName (Serial: $serialNumber)" "Cyan"
+        Write-ColorOutput "Processing: $deviceName (Serial: $deviceSerial)" "Cyan"
         Write-ColorOutput "------------------------------" "DarkGray"
 
         # WIPE device first if requested
         if ($performWipe -and -not $WhatIfPreference) {
-            $intuneDevice = Get-IntuneDevice -DeviceName $deviceName -SerialNumber $serialNumber
+            $intuneDevice = Get-IntuneDevice -DeviceName $deviceName -SerialNumber $deviceSerial
 
             if ($intuneDevice) {
                 Write-ColorOutput ""
@@ -626,24 +626,24 @@
 
         # Remove from Intune (skip if already removed by wipe)
         if (-not $deviceResult.Wiped) {
-            $intuneResult = Remove-IntuneDevice -DeviceName $deviceName -SerialNumber $serialNumber
+            $intuneResult = Remove-IntuneDevice -DeviceName $deviceName -SerialNumber $deviceSerial
             $deviceResult.Intune.Found = $intuneResult.Found
             $deviceResult.Intune.Success = $intuneResult.Success
             $deviceResult.Intune.Error = $intuneResult.Error
         }
 
         # Remove from Autopilot
-        $autopilotResult = Remove-AutopilotDevice -DeviceName $deviceName -SerialNumber $serialNumber
+        $autopilotResult = Remove-AutopilotDevice -DeviceName $deviceName -SerialNumber $deviceSerial
         $deviceResult.Autopilot.Found = $autopilotResult.Found
         $deviceResult.Autopilot.Success = $autopilotResult.Success
         $deviceResult.Autopilot.Error = $autopilotResult.Error
 
         # Remove from Entra ID
         $entraDeviceId = $fullDevice.EntraDeviceId
-        $entraDevices = Get-EntraDeviceByName -DeviceName $deviceName -SerialNumber $serialNumber -EntraDeviceId $entraDeviceId
+        $entraDevices = Get-EntraDeviceByName -DeviceName $deviceName -SerialNumber $deviceSerial -EntraDeviceId $entraDeviceId
         if ($entraDevices -and $entraDevices.Count -gt 0) {
             $deviceResult.EntraID.Found = $true
-            $entraResult = Remove-EntraDevices -Devices $entraDevices -DeviceName $deviceName -SerialNumber $serialNumber
+            $entraResult = Remove-EntraDevices -Devices $entraDevices -DeviceName $deviceName -SerialNumber $deviceSerial
             $deviceResult.EntraID.Success = $entraResult.Success
             $deviceResult.EntraID.DeletedCount = $entraResult.DeletedCount
             $deviceResult.EntraID.FailedCount = $entraResult.FailedCount
@@ -654,7 +654,7 @@
         if ($script:NoLoggingMode) {
             # Get device ID from the original device data
             $deviceId = "N/A"
-            $fullDeviceData = $enrichedDevices | Where-Object { $_.SerialNumber -eq $serialNumber }
+            $fullDeviceData = $enrichedDevices | Where-Object { $_.SerialNumber -eq $deviceSerial }
             if ($fullDeviceData -and $fullDeviceData.EntraDeviceId) {
                 $deviceId = $fullDeviceData.EntraDeviceId
             }
@@ -662,7 +662,7 @@
             Write-ColorOutput ""
             Write-ColorOutput "✓ Device processed for removal" "Cyan"
             Write-ColorOutput "  Name:           $deviceName" "White"
-            Write-ColorOutput "  Serial Number:  $serialNumber" "White"
+            Write-ColorOutput "  Serial Number:  $deviceSerial" "White"
             Write-ColorOutput "  Device ID:      $deviceId" "White"
             Write-ColorOutput ""
 
@@ -697,7 +697,7 @@
                 if (-not $intuneRemoved) {
                     Write-ColorOutput "Waiting for 1 of 1 to be removed from Intune (Elapsed: $elapsedMinutes min)" "Yellow"
                     try {
-                        $intuneDevice = Get-IntuneDevice -DeviceName $deviceName -SerialNumber $serialNumber
+                        $intuneDevice = Get-IntuneDevice -DeviceName $deviceName -SerialNumber $deviceSerial
                         if (-not $intuneDevice) {
                             $intuneRemoved = $true
                             Write-ColorOutput "✓ Device removed from Intune" "Green"
@@ -713,7 +713,7 @@
                 if ($intuneRemoved -and -not $autopilotRemoved) {
                     Write-ColorOutput "Waiting for 1 of 1 to be removed from Autopilot (Elapsed: $elapsedMinutes min)" "Yellow"
                     try {
-                        $autopilotDevice = Get-AutopilotDevice -DeviceName $deviceName -SerialNumber $serialNumber
+                        $autopilotDevice = Get-AutopilotDevice -DeviceName $deviceName -SerialNumber $deviceSerial
                         if (-not $autopilotDevice) {
                             $autopilotRemoved = $true
                             Write-ColorOutput "✓ Device removed from Autopilot" "Green"
@@ -729,7 +729,7 @@
                 if ($autopilotRemoved -and $intuneRemoved -and -not $entraRemoved) {
                     Write-ColorOutput "Waiting for 1 of 1 to be removed from Entra ID (Elapsed: $elapsedMinutes min)" "Yellow"
                     try {
-                        $entraDevices = Get-EntraDeviceByName -DeviceName $deviceName -SerialNumber $serialNumber -EntraDeviceId $entraDeviceId
+                        $entraDevices = Get-EntraDeviceByName -DeviceName $deviceName -SerialNumber $deviceSerial -EntraDeviceId $entraDeviceId
                         if (-not $entraDevices -or $entraDevices.Count -eq 0) {
                             $entraRemoved = $true
                             Write-ColorOutput "✓ Device removed from Entra ID" "Green"
@@ -748,7 +748,7 @@
 
                     # Get device ID from the original device data
                     $deviceId = "N/A"
-                    $fullDeviceData = $enrichedDevices | Where-Object { $_.SerialNumber -eq $serialNumber }
+                    $fullDeviceData = $enrichedDevices | Where-Object { $_.SerialNumber -eq $deviceSerial }
                     if ($fullDeviceData -and $fullDeviceData.EntraDeviceId) {
                         $deviceId = $fullDeviceData.EntraDeviceId
                     }
@@ -756,7 +756,7 @@
                     Write-ColorOutput ""
                     Write-ColorOutput "✓ Device successfully removed" "Green"
                     Write-ColorOutput "  Name:           $deviceName" "White"
-                    Write-ColorOutput "  Serial Number:  $serialNumber" "White"
+                    Write-ColorOutput "  Serial Number:  $deviceSerial" "White"
                     Write-ColorOutput "  Device ID:      $deviceId" "White"
                     Write-ColorOutput "  Elapsed Time:   $elapsedTime minutes" "White"
                     Write-ColorOutput ""

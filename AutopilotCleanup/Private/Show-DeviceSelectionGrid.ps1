@@ -1,4 +1,4 @@
-﻿function Show-DeviceSelectionGrid {
+function Show-DeviceSelectionGrid {
     param (
         [Parameter(Mandatory)]
         [array]$Devices,
@@ -26,8 +26,6 @@
         })
     }
 
-    $script:filteredList = [System.Collections.ArrayList]::new($script:deviceList)
-
     $xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -49,7 +47,11 @@
             <TextBlock Name="CountLabel" VerticalAlignment="Center" Foreground="Gray" FontSize="14"/>
         </StackPanel>
 
-        <ListView Name="DeviceList" Grid.Row="2" SelectionMode="Multiple">
+        <ListView Name="DeviceList" Grid.Row="2" SelectionMode="Multiple"
+                  VirtualizingStackPanel.IsVirtualizing="True"
+                  VirtualizingStackPanel.VirtualizationMode="Recycling"
+                  ScrollViewer.IsDeferredScrollingEnabled="True"
+                  ScrollViewer.CanContentScroll="True">
             <ListView.View>
                 <GridView>
                     <GridViewColumn Width="40">
@@ -91,8 +93,26 @@
     $okBtn = $window.FindName("OkBtn")
     $cancelBtn = $window.FindName("CancelBtn")
 
-    $listView.ItemsSource = $script:filteredList
+    # Use CollectionViewSource for filtered view instead of rebuilding lists
+    $listView.ItemsSource = $script:deviceList
+    $script:collectionView = [System.Windows.Data.CollectionViewSource]::GetDefaultView($script:deviceList)
     $countLabel.Text = "0 of $($script:deviceList.Count) selected"
+
+    # Current search text for filter
+    $script:currentSearch = ""
+
+    # Set filter predicate on the collection view
+    $script:collectionView.Filter = [System.Predicate[object]]{
+        param($item)
+        if ([string]::IsNullOrEmpty($script:currentSearch)) { return $true }
+        $s = $script:currentSearch
+        return (
+            ($item.DisplayName -and $item.DisplayName.ToLower().Contains($s)) -or
+            ($item.SerialNumber -and $item.SerialNumber.ToLower().Contains($s)) -or
+            ($item.Model -and $item.Model.ToLower().Contains($s)) -or
+            ($item.GroupTag -and $item.GroupTag.ToLower().Contains($s))
+        )
+    }
 
     # Update count function
     $updateCount = {
@@ -100,31 +120,30 @@
         $countLabel.Text = "$selected of $($script:deviceList.Count) selected"
     }
 
-    # Search filter
-    $searchBox.Add_TextChanged({
-        $searchText = $searchBox.Text.ToLower()
-        $searchPlaceholder.Visibility = if ($searchText) { "Collapsed" } else { "Visible" }
+    # Debounce timer for search - waits 300ms after last keystroke before filtering
+    $script:searchTimer = [System.Windows.Threading.DispatcherTimer]::new()
+    $script:searchTimer.Interval = [TimeSpan]::FromMilliseconds(300)
+    $script:searchTimer.Add_Tick({
+        $script:searchTimer.Stop()
+        $script:currentSearch = $searchBox.Text.ToLower()
+        $script:collectionView.Refresh()
+    })
 
-        $script:filteredList.Clear()
-        foreach ($item in $script:deviceList) {
-            if ($item.DisplayName.ToLower().Contains($searchText) -or
-                $item.SerialNumber.ToLower().Contains($searchText) -or
-                $item.Model.ToLower().Contains($searchText) -or
-                $item.GroupTag.ToLower().Contains($searchText)) {
-                $null = $script:filteredList.Add($item)
-            }
-        }
-        $listView.Items.Refresh()
+    $searchBox.Add_TextChanged({
+        $searchPlaceholder.Visibility = if ($searchBox.Text) { "Collapsed" } else { "Visible" }
+        $script:searchTimer.Stop()
+        $script:searchTimer.Start()
     })
 
     $selectAllBtn.Add_Click({
-        foreach ($item in $script:filteredList) { $item.Selected = $true }
+        # Only select visible (filtered) items
+        foreach ($item in $script:collectionView) { $item.Selected = $true }
         $listView.Items.Refresh()
         & $updateCount
     })
 
     $clearAllBtn.Add_Click({
-        foreach ($item in $script:filteredList) { $item.Selected = $false }
+        foreach ($item in $script:collectionView) { $item.Selected = $false }
         $listView.Items.Refresh()
         & $updateCount
     })

@@ -1,6 +1,6 @@
 ﻿@{
     RootModule        = 'AutopilotCleanup.psm1'
-    ModuleVersion     = '2.2.1'
+    ModuleVersion     = '2.2.2'
     GUID              = '2c66f0a3-dcb1-4050-8913-142c0b2991cd'
     Author            = 'Mark Orr'
     CompanyName       = 'Orr365'
@@ -49,6 +49,9 @@
             ProjectUri = 'https://github.com/markorr321/Autopilot-Cleanup'
 
             ReleaseNotes = @'
+## 2.2.2
+- Fix SerialNumber parameter variable collision causing type conversion errors during device removal
+
 ## 2.2.1
 - Per-service progress bars during parallel fetch (page count and record count per service)
 - Terminal indication when WPF device selection window is open
