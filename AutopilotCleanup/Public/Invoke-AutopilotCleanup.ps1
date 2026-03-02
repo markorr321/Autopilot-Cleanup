@@ -77,232 +77,100 @@
         }
     }
 
-    # Bulk fetch all devices from all services
-    $autopilotDevices = @()
-    $allIntuneDevices = @()
-    $allEntraDevices = @()
+    # Fetch device data - targeted queries for -SerialNumber, bulk fetch for WPF grid
+    $enrichedDevices = @()
 
-    if ($PSVersionTable.PSVersion.Major -ge 7) {
-        # PowerShell 7+: Fetch all 3 services in parallel using thread jobs
-        Write-ColorOutput "Fetching devices from all services in parallel..." "Yellow"
-
-        # Shared progress tracker - thread jobs update this in real time
-        $progressTracker = [System.Collections.Concurrent.ConcurrentDictionary[string, hashtable]]::new()
-        $progressTracker["Autopilot"] = @{ Pages = 0; Records = 0; Done = $false }
-        $progressTracker["Intune"] = @{ Pages = 0; Records = 0; Done = $false }
-        $progressTracker["Entra ID"] = @{ Pages = 0; Records = 0; Done = $false }
-
-        $fetchScript = {
-            param($Uri, $ServiceName, $Tracker)
-            Import-Module Microsoft.Graph.Authentication -ErrorAction SilentlyContinue
-            $allResults = [System.Collections.Generic.List[object]]::new()
-            $currentUri = $Uri
-            $page = 0
-            do {
-                $page++
-                $response = Invoke-MgGraphRequest -Uri $currentUri -Method GET
-                if ($response.value) {
-                    $allResults.AddRange($response.value)
-                }
-                $Tracker[$ServiceName] = @{ Pages = $page; Records = $allResults.Count; Done = $false }
-                $currentUri = $response.'@odata.nextLink'
-            } while ($currentUri)
-            $Tracker[$ServiceName] = @{ Pages = $page; Records = $allResults.Count; Done = $true }
-            return @{ Service = $ServiceName; Count = $allResults.Count; Results = $allResults.ToArray() }
-        }
-
-        $autopilotJob = Start-ThreadJob -ScriptBlock $fetchScript -ArgumentList "https://graph.microsoft.com/v1.0/deviceManagement/windowsAutopilotDeviceIdentities", "Autopilot", $progressTracker
-        $intuneJob = Start-ThreadJob -ScriptBlock $fetchScript -ArgumentList "https://graph.microsoft.com/v1.0/deviceManagement/managedDevices", "Intune", $progressTracker
-        $entraJob = Start-ThreadJob -ScriptBlock $fetchScript -ArgumentList "https://graph.microsoft.com/v1.0/devices", "Entra ID", $progressTracker
-
-        $allJobs = @(
-            @{ Job = $autopilotJob; Name = "Autopilot"; Id = 1 }
-            @{ Job = $intuneJob; Name = "Intune"; Id = 2 }
-            @{ Job = $entraJob; Name = "Entra ID"; Id = 3 }
-        )
-
-        # Monitor progress with per-service detail
-        $startTime = Get-Date
-        while ($allJobs | Where-Object { $_.Job.State -eq 'Running' }) {
-            $elapsed = [math]::Round(((Get-Date) - $startTime).TotalSeconds)
-            $completedCount = ($allJobs | Where-Object { $_.Job.State -ne 'Running' }).Count
-            Write-Progress -Id 0 -Activity "Fetching devices from all services" -Status "$completedCount of 3 services complete ($($elapsed)s)" -PercentComplete (($completedCount / 3) * 100)
-
-            foreach ($entry in $allJobs) {
-                $info = $progressTracker[$entry.Name]
-                if ($info.Done) {
-                    Write-Progress -Id $entry.Id -ParentId 0 -Activity $entry.Name -Status "Done - $($info.Records) records" -PercentComplete 100
-                } elseif ($info.Pages -gt 0) {
-                    Write-Progress -Id $entry.Id -ParentId 0 -Activity $entry.Name -Status "Page $($info.Pages) - $($info.Records) records"
-                } else {
-                    Write-Progress -Id $entry.Id -ParentId 0 -Activity $entry.Name -Status "Starting..."
-                }
-            }
-
-            Start-Sleep -Milliseconds 500
-        }
-
-        # Final update before clearing
-        foreach ($entry in $allJobs) {
-            $info = $progressTracker[$entry.Name]
-            Write-Progress -Id $entry.Id -ParentId 0 -Activity $entry.Name -Status "Done - $($info.Records) records" -Completed
-        }
-        Write-Progress -Id 0 -Activity "Fetching devices from all services" -Completed
-
-        # Collect results and handle errors
-        $jobErrors = @()
-        foreach ($entry in $allJobs) {
-            if ($entry.Job.State -eq 'Failed') {
-                $jobErrors += "$($entry.Name): $(Receive-Job -Job $entry.Job -ErrorAction SilentlyContinue 2>&1)"
-            }
-        }
-
-        if ($jobErrors.Count -gt 0) {
-            foreach ($err in $jobErrors) {
-                Write-ColorOutput "Parallel fetch error - $err" "Red"
-            }
-            Write-ColorOutput "Falling back to sequential fetch..." "Yellow"
-
-            # Clean up failed jobs
-            $allJobs | ForEach-Object { Remove-Job -Job $_.Job -Force -ErrorAction SilentlyContinue }
-
-            # Sequential fallback
-            $autopilotDevices = Get-GraphPagedResults -Uri "https://graph.microsoft.com/v1.0/deviceManagement/windowsAutopilotDeviceIdentities" -ActivityName "Fetching Autopilot devices"
-            $allIntuneDevices = Get-GraphPagedResults -Uri "https://graph.microsoft.com/v1.0/deviceManagement/managedDevices" -ActivityName "Fetching Intune devices"
-            $allEntraDevices = Get-GraphPagedResults -Uri "https://graph.microsoft.com/v1.0/devices" -ActivityName "Fetching Entra ID devices"
-        } else {
-            $autopilotResult = Receive-Job -Job $autopilotJob -Wait
-            $intuneResult = Receive-Job -Job $intuneJob -Wait
-            $entraResult = Receive-Job -Job $entraJob -Wait
-
-            $autopilotDevices = $autopilotResult.Results
-            $allIntuneDevices = $intuneResult.Results
-            $allEntraDevices = $entraResult.Results
-
-            $allJobs | ForEach-Object { Remove-Job -Job $_.Job -Force -ErrorAction SilentlyContinue }
-        }
-
-        Write-ColorOutput "Found $($autopilotDevices.Count) Autopilot devices" "Green"
-        Write-ColorOutput "Found $($allIntuneDevices.Count) Intune devices" "Green"
-        Write-ColorOutput "Found $($allEntraDevices.Count) Entra ID devices" "Green"
-    } else {
-        # PowerShell 5.1: Sequential fetch with progress bars
-        Write-ColorOutput "Fetching all Autopilot devices..." "Yellow"
-        $autopilotDevices = Get-GraphPagedResults -Uri "https://graph.microsoft.com/v1.0/deviceManagement/windowsAutopilotDeviceIdentities" -ActivityName "Fetching Autopilot devices"
-        Write-ColorOutput "Found $($autopilotDevices.Count) Autopilot devices" "Green"
-
-        Write-ColorOutput "Fetching all Intune devices..." "Yellow"
-        $allIntuneDevices = Get-GraphPagedResults -Uri "https://graph.microsoft.com/v1.0/deviceManagement/managedDevices" -ActivityName "Fetching Intune devices"
-        Write-ColorOutput "Found $($allIntuneDevices.Count) Intune devices" "Green"
-
-        Write-ColorOutput "Fetching all Entra ID devices..." "Yellow"
-        $allEntraDevices = Get-GraphPagedResults -Uri "https://graph.microsoft.com/v1.0/devices" -ActivityName "Fetching Entra ID devices"
-        Write-ColorOutput "Found $($allEntraDevices.Count) Entra ID devices" "Green"
-    }
-
-    if ($autopilotDevices.Count -eq 0) {
-        Write-ColorOutput "No Autopilot devices found. Exiting." "Red"
-        return
-    }
-
-    # Create HashSets/Hashtables for fast lookups
-    $intuneBySerial = @{}
-    $intuneByName = @{}
-    foreach ($device in $allIntuneDevices) {
-        if ($device.serialNumber) {
-            $intuneBySerial[$device.serialNumber] = $device
-        }
-        if ($device.deviceName) {
-            $intuneByName[$device.deviceName] = $device
-        }
-    }
-
-    $entraByName = @{}
-    $entraByDeviceId = @{}
-    foreach ($device in $allEntraDevices) {
-        if ($device.displayName) {
-            if (-not $entraByName.ContainsKey($device.displayName)) {
-                $entraByName[$device.displayName] = @()
-            }
-            $entraByName[$device.displayName] += $device
-        }
-        if ($device.deviceId) {
-            $entraByDeviceId[$device.deviceId] = $device
-        }
-    }
-
-    Write-ColorOutput ""
-    Write-ColorOutput "Enriching device information..." "Cyan"
-    $enrichedDevices = foreach ($device in $autopilotDevices) {
-        # Fast local lookup instead of API calls
-        $intuneDevice = $null
-        if ($device.serialNumber -and $intuneBySerial.ContainsKey($device.serialNumber)) {
-            $intuneDevice = $intuneBySerial[$device.serialNumber]
-        } elseif ($device.displayName -and $intuneByName.ContainsKey($device.displayName)) {
-            $intuneDevice = $intuneByName[$device.displayName]
-        }
-
-        $entraDevice = $null
-        # First try by Azure AD Device ID (most reliable)
-        if ($device.azureActiveDirectoryDeviceId -and $entraByDeviceId.ContainsKey($device.azureActiveDirectoryDeviceId)) {
-            $entraDevice = $entraByDeviceId[$device.azureActiveDirectoryDeviceId]
-        }
-        # Fall back to display name
-        elseif ($device.displayName -and $entraByName.ContainsKey($device.displayName)) {
-            $entraDevice = $entraByName[$device.displayName] | Select-Object -First 1
-        }
-
-        # Create a meaningful display name
-        $displayName = if ($device.displayName -and $device.displayName -ne "") {
-            $device.displayName
-        } elseif ($intuneDevice -and $intuneDevice.deviceName) {
-            $intuneDevice.deviceName
-        } elseif ($entraDevice -and $entraDevice.displayName) {
-            $entraDevice.displayName
-        } elseif ($device.serialNumber) {
-            "Device-$($device.serialNumber)"
-        } else {
-            "Unknown-$($device.id.Substring(0,8))"
-        }
-
-        [PSCustomObject]@{
-            AutopilotId = $device.id
-            DisplayName = $displayName
-            SerialNumber = $device.serialNumber
-            Model = $device.model
-            Manufacturer = $device.manufacturer
-            GroupTag = if ($device.groupTag) { $device.groupTag } else { "None" }
-            IntuneFound = if ($intuneDevice) { "Yes" } else { "No" }
-            IntuneId = if ($intuneDevice) { $intuneDevice.id } else { $null }
-            IntuneName = if ($intuneDevice) { $intuneDevice.deviceName } else { "N/A" }
-            EntraFound = if ($entraDevice) { "Yes" } else { "No" }
-            EntraId = if ($entraDevice) { $entraDevice.id } else { $null }
-            EntraDeviceId = if ($entraDevice -and $entraDevice.deviceId) { $entraDevice.deviceId } elseif ($device.azureActiveDirectoryDeviceId) { $device.azureActiveDirectoryDeviceId } else { $null }
-            EntraName = if ($entraDevice) { $entraDevice.displayName } else { "N/A" }
-            # Store original objects for deletion
-            _AutopilotDevice = $device
-            _IntuneDevice = $intuneDevice
-            _EntraDevice = $entraDevice
-        }
-    }
-
-    # Select devices: by serial number parameter or via WPF grid
     if ($SerialNumber -and $SerialNumber.Count -gt 0) {
-        Write-ColorOutput "Selecting devices by serial number..." "Cyan"
-        Write-ColorOutput ""
+        # Targeted fetch: only query for the specific serial numbers
+        Write-ColorOutput "Looking up $($SerialNumber.Count) device(s) by serial number..." "Yellow"
 
         $selectedDevices = @()
         $notFoundSerials = @()
 
         foreach ($sn in $SerialNumber) {
-            $match = $enrichedDevices | Where-Object { $_.SerialNumber -eq $sn }
-            if ($match) {
-                $selectedDevices += $match
-                Write-ColorOutput "  ✓ Found: $($match.DisplayName) ($sn)" "Green"
-            } else {
+            # Find in Autopilot by serial number
+            $autopilotDevice = $null
+            try {
+                $uri = "https://graph.microsoft.com/v1.0/deviceManagement/windowsAutopilotDeviceIdentities?`$filter=contains(serialNumber,'$sn')"
+                $response = Invoke-MgGraphRequest -Uri $uri -Method GET
+                if ($response.value) {
+                    $autopilotDevice = $response.value | Where-Object { $_.serialNumber -eq $sn } | Select-Object -First 1
+                }
+            } catch {
+                Write-ColorOutput "  Error querying Autopilot for $sn`: $($_.Exception.Message)" "Red"
+            }
+
+            if (-not $autopilotDevice) {
                 $notFoundSerials += $sn
                 Write-ColorOutput "  ✗ Not found in Autopilot: $sn" "Yellow"
+                continue
             }
+
+            # Find in Intune by serial number
+            $intuneDevice = $null
+            try {
+                $uri = "https://graph.microsoft.com/v1.0/deviceManagement/managedDevices?`$filter=serialNumber eq '$sn'"
+                $response = Invoke-MgGraphRequest -Uri $uri -Method GET
+                if ($response.value) {
+                    $intuneDevice = $response.value | Select-Object -First 1
+                }
+            } catch { }
+
+            # Find in Entra ID by Azure AD Device ID
+            $entraDevice = $null
+            if ($autopilotDevice.azureActiveDirectoryDeviceId) {
+                try {
+                    $uri = "https://graph.microsoft.com/v1.0/devices?`$filter=deviceId eq '$($autopilotDevice.azureActiveDirectoryDeviceId)'"
+                    $response = Invoke-MgGraphRequest -Uri $uri -Method GET
+                    if ($response.value) {
+                        $entraDevice = $response.value | Select-Object -First 1
+                    }
+                } catch { }
+            }
+            # Fall back to display name
+            if (-not $entraDevice -and $autopilotDevice.displayName) {
+                try {
+                    $uri = "https://graph.microsoft.com/v1.0/devices?`$filter=displayName eq '$($autopilotDevice.displayName)'"
+                    $response = Invoke-MgGraphRequest -Uri $uri -Method GET
+                    if ($response.value) {
+                        $entraDevice = $response.value | Select-Object -First 1
+                    }
+                } catch { }
+            }
+
+            # Build display name
+            $displayName = if ($autopilotDevice.displayName -and $autopilotDevice.displayName -ne "") {
+                $autopilotDevice.displayName
+            } elseif ($intuneDevice -and $intuneDevice.deviceName) {
+                $intuneDevice.deviceName
+            } elseif ($entraDevice -and $entraDevice.displayName) {
+                $entraDevice.displayName
+            } else {
+                "Device-$sn"
+            }
+
+            $enriched = [PSCustomObject]@{
+                AutopilotId = $autopilotDevice.id
+                DisplayName = $displayName
+                SerialNumber = $autopilotDevice.serialNumber
+                Model = $autopilotDevice.model
+                Manufacturer = $autopilotDevice.manufacturer
+                GroupTag = if ($autopilotDevice.groupTag) { $autopilotDevice.groupTag } else { "None" }
+                IntuneFound = if ($intuneDevice) { "Yes" } else { "No" }
+                IntuneId = if ($intuneDevice) { $intuneDevice.id } else { $null }
+                IntuneName = if ($intuneDevice) { $intuneDevice.deviceName } else { "N/A" }
+                EntraFound = if ($entraDevice) { "Yes" } else { "No" }
+                EntraId = if ($entraDevice) { $entraDevice.id } else { $null }
+                EntraDeviceId = if ($entraDevice -and $entraDevice.deviceId) { $entraDevice.deviceId } elseif ($autopilotDevice.azureActiveDirectoryDeviceId) { $autopilotDevice.azureActiveDirectoryDeviceId } else { $null }
+                EntraName = if ($entraDevice) { $entraDevice.displayName } else { "N/A" }
+                _AutopilotDevice = $autopilotDevice
+                _IntuneDevice = $intuneDevice
+                _EntraDevice = $entraDevice
+            }
+
+            $enrichedDevices += $enriched
+            $selectedDevices += $enriched
+            Write-ColorOutput "  ✓ Found: $displayName ($sn)" "Green"
         }
 
         Write-ColorOutput ""
@@ -311,6 +179,215 @@
         }
         Write-ColorOutput "Matched $($selectedDevices.Count) of $($SerialNumber.Count) serial number(s)" "Cyan"
     } else {
+        # Bulk fetch all devices for WPF grid selection
+        $autopilotDevices = @()
+        $allIntuneDevices = @()
+        $allEntraDevices = @()
+
+        if ($PSVersionTable.PSVersion.Major -ge 7) {
+            # PowerShell 7+: Fetch all 3 services in parallel using thread jobs
+            Write-ColorOutput "Fetching devices from all services in parallel..." "Yellow"
+
+            # Shared progress tracker - thread jobs update this in real time
+            $progressTracker = [System.Collections.Concurrent.ConcurrentDictionary[string, hashtable]]::new()
+            $progressTracker["Autopilot"] = @{ Pages = 0; Records = 0; Done = $false }
+            $progressTracker["Intune"] = @{ Pages = 0; Records = 0; Done = $false }
+            $progressTracker["Entra ID"] = @{ Pages = 0; Records = 0; Done = $false }
+
+            $fetchScript = {
+                param($Uri, $ServiceName, $Tracker)
+                Import-Module Microsoft.Graph.Authentication -ErrorAction SilentlyContinue
+                $allResults = [System.Collections.Generic.List[object]]::new()
+                $currentUri = $Uri
+                $page = 0
+                do {
+                    $page++
+                    $response = Invoke-MgGraphRequest -Uri $currentUri -Method GET
+                    if ($response.value) {
+                        $allResults.AddRange($response.value)
+                    }
+                    $Tracker[$ServiceName] = @{ Pages = $page; Records = $allResults.Count; Done = $false }
+                    $currentUri = $response.'@odata.nextLink'
+                } while ($currentUri)
+                $Tracker[$ServiceName] = @{ Pages = $page; Records = $allResults.Count; Done = $true }
+                return @{ Service = $ServiceName; Count = $allResults.Count; Results = $allResults.ToArray() }
+            }
+
+            $autopilotJob = Start-ThreadJob -ScriptBlock $fetchScript -ArgumentList "https://graph.microsoft.com/v1.0/deviceManagement/windowsAutopilotDeviceIdentities", "Autopilot", $progressTracker
+            $intuneJob = Start-ThreadJob -ScriptBlock $fetchScript -ArgumentList "https://graph.microsoft.com/v1.0/deviceManagement/managedDevices", "Intune", $progressTracker
+            $entraJob = Start-ThreadJob -ScriptBlock $fetchScript -ArgumentList "https://graph.microsoft.com/v1.0/devices", "Entra ID", $progressTracker
+
+            $allJobs = @(
+                @{ Job = $autopilotJob; Name = "Autopilot"; Id = 1 }
+                @{ Job = $intuneJob; Name = "Intune"; Id = 2 }
+                @{ Job = $entraJob; Name = "Entra ID"; Id = 3 }
+            )
+
+            # Monitor progress with per-service detail
+            $startTime = Get-Date
+            while ($allJobs | Where-Object { $_.Job.State -eq 'Running' }) {
+                $elapsed = [math]::Round(((Get-Date) - $startTime).TotalSeconds)
+                $completedCount = ($allJobs | Where-Object { $_.Job.State -ne 'Running' }).Count
+                Write-Progress -Id 0 -Activity "Fetching devices from all services" -Status "$completedCount of 3 services complete ($($elapsed)s)" -PercentComplete (($completedCount / 3) * 100)
+
+                foreach ($entry in $allJobs) {
+                    $info = $progressTracker[$entry.Name]
+                    if ($info.Done) {
+                        Write-Progress -Id $entry.Id -ParentId 0 -Activity $entry.Name -Status "Done - $($info.Records) records" -PercentComplete 100
+                    } elseif ($info.Pages -gt 0) {
+                        Write-Progress -Id $entry.Id -ParentId 0 -Activity $entry.Name -Status "Page $($info.Pages) - $($info.Records) records"
+                    } else {
+                        Write-Progress -Id $entry.Id -ParentId 0 -Activity $entry.Name -Status "Starting..."
+                    }
+                }
+
+                Start-Sleep -Milliseconds 500
+            }
+
+            # Final update before clearing
+            foreach ($entry in $allJobs) {
+                $info = $progressTracker[$entry.Name]
+                Write-Progress -Id $entry.Id -ParentId 0 -Activity $entry.Name -Status "Done - $($info.Records) records" -Completed
+            }
+            Write-Progress -Id 0 -Activity "Fetching devices from all services" -Completed
+
+            # Collect results and handle errors
+            $jobErrors = @()
+            foreach ($entry in $allJobs) {
+                if ($entry.Job.State -eq 'Failed') {
+                    $jobErrors += "$($entry.Name): $(Receive-Job -Job $entry.Job -ErrorAction SilentlyContinue 2>&1)"
+                }
+            }
+
+            if ($jobErrors.Count -gt 0) {
+                foreach ($err in $jobErrors) {
+                    Write-ColorOutput "Parallel fetch error - $err" "Red"
+                }
+                Write-ColorOutput "Falling back to sequential fetch..." "Yellow"
+
+                # Clean up failed jobs
+                $allJobs | ForEach-Object { Remove-Job -Job $_.Job -Force -ErrorAction SilentlyContinue }
+
+                # Sequential fallback
+                $autopilotDevices = Get-GraphPagedResults -Uri "https://graph.microsoft.com/v1.0/deviceManagement/windowsAutopilotDeviceIdentities" -ActivityName "Fetching Autopilot devices"
+                $allIntuneDevices = Get-GraphPagedResults -Uri "https://graph.microsoft.com/v1.0/deviceManagement/managedDevices" -ActivityName "Fetching Intune devices"
+                $allEntraDevices = Get-GraphPagedResults -Uri "https://graph.microsoft.com/v1.0/devices" -ActivityName "Fetching Entra ID devices"
+            } else {
+                $autopilotResult = Receive-Job -Job $autopilotJob -Wait
+                $intuneResult = Receive-Job -Job $intuneJob -Wait
+                $entraResult = Receive-Job -Job $entraJob -Wait
+
+                $autopilotDevices = $autopilotResult.Results
+                $allIntuneDevices = $intuneResult.Results
+                $allEntraDevices = $entraResult.Results
+
+                $allJobs | ForEach-Object { Remove-Job -Job $_.Job -Force -ErrorAction SilentlyContinue }
+            }
+
+            Write-ColorOutput "Found $($autopilotDevices.Count) Autopilot devices" "Green"
+            Write-ColorOutput "Found $($allIntuneDevices.Count) Intune devices" "Green"
+            Write-ColorOutput "Found $($allEntraDevices.Count) Entra ID devices" "Green"
+        } else {
+            # PowerShell 5.1: Sequential fetch with progress bars
+            Write-ColorOutput "Fetching all Autopilot devices..." "Yellow"
+            $autopilotDevices = Get-GraphPagedResults -Uri "https://graph.microsoft.com/v1.0/deviceManagement/windowsAutopilotDeviceIdentities" -ActivityName "Fetching Autopilot devices"
+            Write-ColorOutput "Found $($autopilotDevices.Count) Autopilot devices" "Green"
+
+            Write-ColorOutput "Fetching all Intune devices..." "Yellow"
+            $allIntuneDevices = Get-GraphPagedResults -Uri "https://graph.microsoft.com/v1.0/deviceManagement/managedDevices" -ActivityName "Fetching Intune devices"
+            Write-ColorOutput "Found $($allIntuneDevices.Count) Intune devices" "Green"
+
+            Write-ColorOutput "Fetching all Entra ID devices..." "Yellow"
+            $allEntraDevices = Get-GraphPagedResults -Uri "https://graph.microsoft.com/v1.0/devices" -ActivityName "Fetching Entra ID devices"
+            Write-ColorOutput "Found $($allEntraDevices.Count) Entra ID devices" "Green"
+        }
+
+        if ($autopilotDevices.Count -eq 0) {
+            Write-ColorOutput "No Autopilot devices found. Exiting." "Red"
+            return
+        }
+
+        # Create HashSets/Hashtables for fast lookups
+        $intuneBySerial = @{}
+        $intuneByName = @{}
+        foreach ($device in $allIntuneDevices) {
+            if ($device.serialNumber) {
+                $intuneBySerial[$device.serialNumber] = $device
+            }
+            if ($device.deviceName) {
+                $intuneByName[$device.deviceName] = $device
+            }
+        }
+
+        $entraByName = @{}
+        $entraByDeviceId = @{}
+        foreach ($device in $allEntraDevices) {
+            if ($device.displayName) {
+                if (-not $entraByName.ContainsKey($device.displayName)) {
+                    $entraByName[$device.displayName] = @()
+                }
+                $entraByName[$device.displayName] += $device
+            }
+            if ($device.deviceId) {
+                $entraByDeviceId[$device.deviceId] = $device
+            }
+        }
+
+        Write-ColorOutput ""
+        Write-ColorOutput "Enriching device information..." "Cyan"
+        $enrichedDevices = foreach ($device in $autopilotDevices) {
+            # Fast local lookup instead of API calls
+            $intuneDevice = $null
+            if ($device.serialNumber -and $intuneBySerial.ContainsKey($device.serialNumber)) {
+                $intuneDevice = $intuneBySerial[$device.serialNumber]
+            } elseif ($device.displayName -and $intuneByName.ContainsKey($device.displayName)) {
+                $intuneDevice = $intuneByName[$device.displayName]
+            }
+
+            $entraDevice = $null
+            # First try by Azure AD Device ID (most reliable)
+            if ($device.azureActiveDirectoryDeviceId -and $entraByDeviceId.ContainsKey($device.azureActiveDirectoryDeviceId)) {
+                $entraDevice = $entraByDeviceId[$device.azureActiveDirectoryDeviceId]
+            }
+            # Fall back to display name
+            elseif ($device.displayName -and $entraByName.ContainsKey($device.displayName)) {
+                $entraDevice = $entraByName[$device.displayName] | Select-Object -First 1
+            }
+
+            # Create a meaningful display name
+            $displayName = if ($device.displayName -and $device.displayName -ne "") {
+                $device.displayName
+            } elseif ($intuneDevice -and $intuneDevice.deviceName) {
+                $intuneDevice.deviceName
+            } elseif ($entraDevice -and $entraDevice.displayName) {
+                $entraDevice.displayName
+            } elseif ($device.serialNumber) {
+                "Device-$($device.serialNumber)"
+            } else {
+                "Unknown-$($device.id.Substring(0,8))"
+            }
+
+            [PSCustomObject]@{
+                AutopilotId = $device.id
+                DisplayName = $displayName
+                SerialNumber = $device.serialNumber
+                Model = $device.model
+                Manufacturer = $device.manufacturer
+                GroupTag = if ($device.groupTag) { $device.groupTag } else { "None" }
+                IntuneFound = if ($intuneDevice) { "Yes" } else { "No" }
+                IntuneId = if ($intuneDevice) { $intuneDevice.id } else { $null }
+                IntuneName = if ($intuneDevice) { $intuneDevice.deviceName } else { "N/A" }
+                EntraFound = if ($entraDevice) { "Yes" } else { "No" }
+                EntraId = if ($entraDevice) { $entraDevice.id } else { $null }
+                EntraDeviceId = if ($entraDevice -and $entraDevice.deviceId) { $entraDevice.deviceId } elseif ($device.azureActiveDirectoryDeviceId) { $device.azureActiveDirectoryDeviceId } else { $null }
+                EntraName = if ($entraDevice) { $entraDevice.displayName } else { "N/A" }
+                # Store original objects for deletion
+                _AutopilotDevice = $device
+                _IntuneDevice = $intuneDevice
+                _EntraDevice = $entraDevice
+            }
+        }
+
         Write-ColorOutput ""
         Write-ColorOutput "Opening device selection window..." "Cyan"
         Write-ColorOutput "  Select the devices you want to remove, then click OK." "Gray"
