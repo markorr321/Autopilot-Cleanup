@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://autopilot-cleanup.orr365.tech/sitemap.xml

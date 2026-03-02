@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Autopilot Cleanup - Bulk Device Removal for Autopilot, Intune & Entra ID</title>
+    <meta name="description" content="Interactive PowerShell tool for bulk device cleanup across Windows Autopilot, Microsoft Intune, and Microsoft Entra ID.">
+    <style>
+        *, *::before, *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-card: rgba(255, 255, 255, 0.05);
+            --bg-card-hover: rgba(255, 255, 255, 0.08);
+            --text-primary: #e6edf3;
+            --text-secondary: rgba(230, 237, 243, 0.7);
+            --text-muted: rgba(230, 237, 243, 0.4);
+            --accent-start: #e44d90;
+            --accent-end: #c946d6;
+            --border: rgba(255, 255, 255, 0.08);
+            --code-bg: rgba(255, 255, 255, 0.06);
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        a {
+            color: var(--accent-start);
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        /* Hero Section */
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 2rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(ellipse at 50% 0%, rgba(228, 77, 144, 0.15) 0%, transparent 60%),
+                        radial-gradient(ellipse at 80% 50%, rgba(201, 70, 214, 0.1) 0%, transparent 50%);
+            pointer-events: none;
+        }
+
+        .hero-brand {
+            font-size: clamp(1.2rem, 3vw, 1.8rem);
+            letter-spacing: 6px;
+            font-weight: 300;
+            opacity: 0.9;
+            margin-bottom: 1rem;
+            background: linear-gradient(135deg, var(--accent-start), var(--accent-end));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .hero-tagline {
+            font-size: clamp(1rem, 2.5vw, 1.4rem);
+            color: var(--text-secondary);
+            max-width: 700px;
+            margin-bottom: 0.5rem;
+            font-weight: 300;
+        }
+
+        .hero-sub {
+            font-size: 0.95rem;
+            color: var(--text-muted);
+            margin-bottom: 2.5rem;
+        }
+
+        .hero-buttons {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .btn {
+            padding: 0.75rem 2rem;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            border: none;
+            transition: transform 0.2s, box-shadow 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            text-decoration: none;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent-start), var(--accent-end));
+            color: white;
+            box-shadow: 0 4px 20px rgba(228, 77, 144, 0.3);
+        }
+
+        .btn-primary:hover {
+            box-shadow: 0 6px 30px rgba(228, 77, 144, 0.45);
+        }
+
+        .btn-secondary {
+            background: var(--bg-card);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+            backdrop-filter: blur(10px);
+        }
+
+        .btn-secondary:hover {
+            background: var(--bg-card-hover);
+        }
+
+        .version-badge {
+            display: inline-block;
+            margin-top: 1.5rem;
+            padding: 0.3rem 1rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+        }
+
+        /* Sections */
+        section {
+            padding: 3.5rem 2rem;
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        .section-title {
+            font-size: clamp(1.5rem, 3vw, 2rem);
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            text-align: center;
+        }
+
+        .section-subtitle {
+            color: var(--text-secondary);
+            text-align: center;
+            margin-bottom: 2rem;
+            font-size: 1.05rem;
+        }
+
+        /* Features */
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .feature-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.8rem;
+            transition: background 0.2s, border-color 0.2s;
+        }
+
+        .feature-card:hover {
+            background: var(--bg-card-hover);
+            border-color: rgba(228, 77, 144, 0.2);
+        }
+
+        .feature-icon {
+            font-size: 1.6rem;
+            margin-bottom: 0.8rem;
+        }
+
+        .feature-card h3 {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .feature-card p {
+            color: var(--text-secondary);
+            font-size: 0.92rem;
+            line-height: 1.5;
+        }
+
+        /* Demo */
+        .demo-section {
+            background: var(--bg-secondary);
+            border-radius: 16px;
+            padding: 3rem 2rem;
+        }
+
+        .demo-wrapper {
+            max-width: 800px;
+            margin: 0 auto;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+            position: relative;
+            cursor: pointer;
+        }
+
+        .demo-wrapper img {
+            width: 100%;
+            display: block;
+        }
+
+        .play-overlay {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.4);
+            transition: background 0.2s;
+        }
+
+        .play-overlay:hover {
+            background: rgba(0, 0, 0, 0.25);
+        }
+
+        .play-btn {
+            width: 72px;
+            height: 72px;
+            background: rgba(228, 77, 144, 0.9);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.2s, background 0.2s;
+        }
+
+        .play-btn:hover {
+            transform: scale(1.1);
+            background: rgba(228, 77, 144, 1);
+        }
+
+        .play-btn svg {
+            width: 28px;
+            height: 28px;
+            margin-left: 4px;
+            fill: white;
+        }
+
+        /* Quick Start */
+        .quickstart-section {
+            background: var(--bg-secondary);
+            border-radius: 16px;
+            padding: 3rem 2rem;
+            scroll-margin-top: 1rem;
+        }
+
+        .code-block {
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.2rem 1.5rem;
+            font-family: 'Cascadia Code', 'Fira Code', 'SF Mono', Consolas, monospace;
+            font-size: 0.9rem;
+            overflow-x: auto;
+            position: relative;
+            margin-bottom: 1rem;
+        }
+
+        .code-block .comment {
+            color: #6a9955;
+        }
+
+        .code-block .command {
+            color: #dcdcaa;
+        }
+
+        .code-block .string {
+            color: #ce9178;
+        }
+
+        .code-label {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .code-steps {
+            max-width: 650px;
+            margin: 0 auto;
+        }
+
+        .code-step {
+            margin-bottom: 1.5rem;
+        }
+
+        /* How It Works */
+        .steps-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1.5rem;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .step-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            text-align: center;
+            position: relative;
+        }
+
+        .step-number {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--accent-start), var(--accent-end));
+            color: white;
+            font-weight: 700;
+            font-size: 0.95rem;
+            margin-bottom: 0.8rem;
+        }
+
+        .step-card h3 {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 0.4rem;
+        }
+
+        .step-card p {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            line-height: 1.4;
+        }
+
+        /* Permissions */
+        .permissions-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .permission-group h3 {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 0.8rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .permission-group ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        .permission-group li {
+            font-family: 'Cascadia Code', 'Fira Code', monospace;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            padding: 0.35rem 0;
+        }
+
+        .permission-group li::before {
+            content: '>';
+            color: var(--accent-start);
+            margin-right: 0.5rem;
+        }
+
+        /* Parameters Table */
+        .params-table {
+            width: 100%;
+            max-width: 700px;
+            margin: 0 auto;
+            border-collapse: collapse;
+        }
+
+        .params-table th {
+            text-align: left;
+            padding: 0.8rem 1rem;
+            border-bottom: 2px solid var(--border);
+            color: var(--text-secondary);
+            font-weight: 500;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .params-table td {
+            padding: 0.7rem 1rem;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.95rem;
+        }
+
+        .params-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .param-name {
+            font-family: 'Cascadia Code', 'Fira Code', monospace;
+            font-size: 0.85rem;
+            color: var(--accent-start);
+        }
+
+        .param-type {
+            font-family: 'Cascadia Code', 'Fira Code', monospace;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 3rem 2rem;
+            border-top: 1px solid var(--border);
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        .footer-links {
+            display: flex;
+            gap: 2rem;
+            justify-content: center;
+            margin-bottom: 1rem;
+        }
+
+        .footer-links a {
+            color: var(--text-secondary);
+        }
+
+        .footer-links a:hover {
+            color: var(--accent-start);
+        }
+
+        /* Responsive */
+        @media (max-width: 640px) {
+            section {
+                padding: 3rem 1.2rem;
+            }
+
+            .features-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .steps-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .hero {
+                min-height: 80vh;
+            }
+
+            .hero-buttons {
+                flex-direction: column;
+                align-items: center;
+            }
+
+            .btn {
+                width: 100%;
+                max-width: 280px;
+                justify-content: center;
+            }
+
+            .permissions-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Hero Section -->
+    <section class="hero">
+        <h1 class="hero-brand">[ A U T O P I L O T &nbsp; C L E A N U P ]</h1>
+        <p class="hero-tagline">Bulk device cleanup across Autopilot, Intune, and Entra ID.</p>
+        <p class="hero-sub">Remove devices from all three services in one workflow &mdash; with PowerShell.</p>
+        <div class="hero-buttons">
+            <a href="#quickstart" class="btn btn-primary">Install Now</a>
+            <a href="https://github.com/markorr321/Autopilot-Cleanup" class="btn btn-secondary">GitHub</a>
+        </div>
+        <div class="version-badge">v2.1.0 &middot; PowerShell 5.1+</div>
+    </section>
+
+    <!-- Features Section -->
+    <section>
+        <h2 class="section-title">Features</h2>
+        <p class="section-subtitle">Everything you need to clean up stale and decommissioned devices.</p>
+        <div class="features-grid">
+            <div class="feature-card">
+                <div class="feature-icon">&#x1F5D1;</div>
+                <h3>Multi-Service Cleanup</h3>
+                <p>Remove devices from Autopilot, Intune, and Entra ID in the correct dependency order &mdash; all in a single workflow.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">&#x1F5B1;</div>
+                <h3>Interactive Device Selection</h3>
+                <p>WPF grid view with search, multi-select, and GroupTag filtering. Pick exactly the devices you want to remove.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">&#x26A1;</div>
+                <h3>Fast Bulk Removal</h3>
+                <p>Bulk removal mode skips status checking for speed, then exports results to a CSV for review.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">&#x1F50D;</div>
+                <h3>Serial Number Validation</h3>
+                <p>Prevents accidental deletion by validating serial numbers and flagging duplicate device names.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">&#x1F4CA;</div>
+                <h3>Real-Time Monitoring</h3>
+                <p>Tracks deletion progress with automatic verification across all three services, with up to 30-minute monitoring.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">&#x1F9EA;</div>
+                <h3>WhatIf Mode</h3>
+                <p>Preview exactly what would be deleted without making actual changes. Safe testing before real cleanup.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">&#x1F511;</div>
+                <h3>Custom App Registration</h3>
+                <p>Optionally bring your own app registration with Configure-AutopilotCleanup. Persists across sessions via environment variables.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">&#x1F4E6;</div>
+                <h3>Zero Config</h3>
+                <p>Auto-installs required modules on first run. No manual setup needed &mdash; just install and go.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">&#x1F504;</div>
+                <h3>Auto-Updates</h3>
+                <p>Automatically checks PowerShell Gallery for new versions and prompts to update with the correct install method.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Demo Section -->
+    <section class="demo-section">
+        <h2 class="section-title">See It in Action</h2>
+        <p class="section-subtitle">Full device cleanup workflow &mdash; authentication, selection, and removal.</p>
+        <div class="demo-wrapper" onclick="window.open('https://youtu.be/SLvbbjJCvHo', '_blank')">
+            <img src="https://img.youtube.com/vi/SLvbbjJCvHo/maxresdefault.jpg" alt="Autopilot Cleanup Demo">
+            <div class="play-overlay">
+                <div class="play-btn">
+                    <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How It Works -->
+    <section>
+        <h2 class="section-title">How It Works</h2>
+        <p class="section-subtitle">Devices are removed in the correct dependency order.</p>
+        <div class="steps-grid">
+            <div class="step-card">
+                <div class="step-number">1</div>
+                <h3>Authenticate</h3>
+                <p>Connect to Microsoft Graph with the required scopes via browser sign-in.</p>
+            </div>
+            <div class="step-card">
+                <div class="step-number">2</div>
+                <h3>Select Devices</h3>
+                <p>Interactive WPF grid displays all Autopilot devices enriched with Intune &amp; Entra data.</p>
+            </div>
+            <div class="step-card">
+                <div class="step-number">3</div>
+                <h3>Remove from Intune</h3>
+                <p>Management layer removed first to prevent re-enrollment conflicts.</p>
+            </div>
+            <div class="step-card">
+                <div class="step-number">4</div>
+                <h3>Remove from Autopilot</h3>
+                <p>Deployment service registration cleaned up after Intune removal.</p>
+            </div>
+            <div class="step-card">
+                <div class="step-number">5</div>
+                <h3>Remove from Entra ID</h3>
+                <p>Identity source cleaned up last, completing the full removal.</p>
+            </div>
+            <div class="step-card">
+                <div class="step-number">6</div>
+                <h3>Verify</h3>
+                <p>Monitors and confirms successful removal from all three services.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Quick Start -->
+    <section class="quickstart-section" id="quickstart">
+        <h2 class="section-title">Quick Start</h2>
+        <p class="section-subtitle">Up and running in two commands.</p>
+        <div class="code-steps">
+            <div class="code-step">
+                <div class="code-label">Install</div>
+                <div class="code-block">
+                    <span class="command">Install-Module</span> -Name AutopilotCleanup -Repository PSGallery
+                </div>
+            </div>
+            <div class="code-step">
+                <div class="code-label">Run</div>
+                <div class="code-block">
+                    <span class="command">Start-AutopilotCleanup</span>
+                </div>
+            </div>
+            <div class="code-step">
+                <div class="code-label">Optional: WhatIf Mode</div>
+                <div class="code-block">
+                    <span class="comment"># Preview deletions without making changes</span><br>
+                    <span class="command">Start-AutopilotCleanup</span> -WhatIf
+                </div>
+            </div>
+            <div class="code-step">
+                <div class="code-label">Optional: Custom App Registration</div>
+                <div class="code-block">
+                    <span class="comment"># Configure once, use anytime</span><br>
+                    <span class="command">Configure-AutopilotCleanup</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Parameters -->
+    <section>
+        <h2 class="section-title">Parameters</h2>
+        <p class="section-subtitle">Command-line options for Start-AutopilotCleanup.</p>
+        <table class="params-table">
+            <thead>
+                <tr>
+                    <th>Parameter</th>
+                    <th>Type</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><span class="param-name">-WhatIf</span></td>
+                    <td><span class="param-type">Switch</span></td>
+                    <td>Preview mode &mdash; shows what would be deleted</td>
+                </tr>
+                <tr>
+                    <td><span class="param-name">-ClientId</span></td>
+                    <td><span class="param-type">String</span></td>
+                    <td>Client ID of a custom app registration</td>
+                </tr>
+                <tr>
+                    <td><span class="param-name">-TenantId</span></td>
+                    <td><span class="param-type">String</span></td>
+                    <td>Tenant ID for the custom app registration</td>
+                </tr>
+            </tbody>
+        </table>
+    </section>
+
+    <!-- API Permissions -->
+    <section>
+        <h2 class="section-title">API Permissions</h2>
+        <p class="section-subtitle">Required Microsoft Graph delegated permissions.</p>
+        <div class="permissions-grid">
+            <div class="permission-group">
+                <h3>Default Auth</h3>
+                <ul>
+                    <li>Device.ReadWrite.All</li>
+                    <li>DeviceManagementManagedDevices.ReadWrite.All</li>
+                    <li>DeviceManagementServiceConfig.ReadWrite.All</li>
+                </ul>
+            </div>
+            <div class="permission-group">
+                <h3>Custom App Registration</h3>
+                <ul>
+                    <li>Device.ReadWrite.All</li>
+                    <li>DeviceManagementManagedDevices.ReadWrite.All</li>
+                    <li>DeviceManagementManagedDevices.PrivilegedOperations.All</li>
+                    <li>DeviceManagementServiceConfig.ReadWrite.All</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <div class="footer-links">
+            <a href="https://github.com/markorr321/Autopilot-Cleanup">GitHub</a>
+            <a href="https://www.powershellgallery.com/packages/AutopilotCleanup">PowerShell Gallery</a>
+            <a href="https://github.com/markorr321/Autopilot-Cleanup/blob/main/LICENSE">License</a>
+        </div>
+        <p>by Mark Orr</p>
+    </footer>
+</body>
+</html>
