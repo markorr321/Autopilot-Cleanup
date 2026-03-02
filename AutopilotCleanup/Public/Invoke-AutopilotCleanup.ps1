@@ -5,7 +5,10 @@
         [string]$ClientId,
 
         [Parameter(HelpMessage = "Tenant ID to use with the specified app registration")]
-        [string]$TenantId
+        [string]$TenantId,
+
+        [Parameter(HelpMessage = "One or more serial numbers to target for removal. Bypasses the device selection grid.")]
+        [string[]]$SerialNumber
     )
 
     # Main execution
@@ -75,22 +78,132 @@
     }
 
     # Bulk fetch all devices from all services
-    Write-ColorOutput "Fetching all Autopilot devices..." "Yellow"
-    $autopilotDevices = Get-GraphPagedResults -Uri "https://graph.microsoft.com/v1.0/deviceManagement/windowsAutopilotDeviceIdentities"
-    Write-ColorOutput "Found $($autopilotDevices.Count) Autopilot devices" "Green"
+    $autopilotDevices = @()
+    $allIntuneDevices = @()
+    $allEntraDevices = @()
+
+    if ($PSVersionTable.PSVersion.Major -ge 7) {
+        # PowerShell 7+: Fetch all 3 services in parallel using thread jobs
+        Write-ColorOutput "Fetching devices from all services in parallel..." "Yellow"
+
+        # Shared progress tracker - thread jobs update this in real time
+        $progressTracker = [System.Collections.Concurrent.ConcurrentDictionary[string, hashtable]]::new()
+        $progressTracker["Autopilot"] = @{ Pages = 0; Records = 0; Done = $false }
+        $progressTracker["Intune"] = @{ Pages = 0; Records = 0; Done = $false }
+        $progressTracker["Entra ID"] = @{ Pages = 0; Records = 0; Done = $false }
+
+        $fetchScript = {
+            param($Uri, $ServiceName, $Tracker)
+            Import-Module Microsoft.Graph.Authentication -ErrorAction SilentlyContinue
+            $allResults = [System.Collections.Generic.List[object]]::new()
+            $currentUri = $Uri
+            $page = 0
+            do {
+                $page++
+                $response = Invoke-MgGraphRequest -Uri $currentUri -Method GET
+                if ($response.value) {
+                    $allResults.AddRange($response.value)
+                }
+                $Tracker[$ServiceName] = @{ Pages = $page; Records = $allResults.Count; Done = $false }
+                $currentUri = $response.'@odata.nextLink'
+            } while ($currentUri)
+            $Tracker[$ServiceName] = @{ Pages = $page; Records = $allResults.Count; Done = $true }
+            return @{ Service = $ServiceName; Count = $allResults.Count; Results = $allResults.ToArray() }
+        }
+
+        $autopilotJob = Start-ThreadJob -ScriptBlock $fetchScript -ArgumentList "https://graph.microsoft.com/v1.0/deviceManagement/windowsAutopilotDeviceIdentities", "Autopilot", $progressTracker
+        $intuneJob = Start-ThreadJob -ScriptBlock $fetchScript -ArgumentList "https://graph.microsoft.com/v1.0/deviceManagement/managedDevices", "Intune", $progressTracker
+        $entraJob = Start-ThreadJob -ScriptBlock $fetchScript -ArgumentList "https://graph.microsoft.com/v1.0/devices", "Entra ID", $progressTracker
+
+        $allJobs = @(
+            @{ Job = $autopilotJob; Name = "Autopilot"; Id = 1 }
+            @{ Job = $intuneJob; Name = "Intune"; Id = 2 }
+            @{ Job = $entraJob; Name = "Entra ID"; Id = 3 }
+        )
+
+        # Monitor progress with per-service detail
+        $startTime = Get-Date
+        while ($allJobs | Where-Object { $_.Job.State -eq 'Running' }) {
+            $elapsed = [math]::Round(((Get-Date) - $startTime).TotalSeconds)
+            $completedCount = ($allJobs | Where-Object { $_.Job.State -ne 'Running' }).Count
+            Write-Progress -Id 0 -Activity "Fetching devices from all services" -Status "$completedCount of 3 services complete ($($elapsed)s)" -PercentComplete (($completedCount / 3) * 100)
+
+            foreach ($entry in $allJobs) {
+                $info = $progressTracker[$entry.Name]
+                if ($info.Done) {
+                    Write-Progress -Id $entry.Id -ParentId 0 -Activity $entry.Name -Status "Done - $($info.Records) records" -PercentComplete 100
+                } elseif ($info.Pages -gt 0) {
+                    Write-Progress -Id $entry.Id -ParentId 0 -Activity $entry.Name -Status "Page $($info.Pages) - $($info.Records) records"
+                } else {
+                    Write-Progress -Id $entry.Id -ParentId 0 -Activity $entry.Name -Status "Starting..."
+                }
+            }
+
+            Start-Sleep -Milliseconds 500
+        }
+
+        # Final update before clearing
+        foreach ($entry in $allJobs) {
+            $info = $progressTracker[$entry.Name]
+            Write-Progress -Id $entry.Id -ParentId 0 -Activity $entry.Name -Status "Done - $($info.Records) records" -Completed
+        }
+        Write-Progress -Id 0 -Activity "Fetching devices from all services" -Completed
+
+        # Collect results and handle errors
+        $jobErrors = @()
+        foreach ($entry in $allJobs) {
+            if ($entry.Job.State -eq 'Failed') {
+                $jobErrors += "$($entry.Name): $(Receive-Job -Job $entry.Job -ErrorAction SilentlyContinue 2>&1)"
+            }
+        }
+
+        if ($jobErrors.Count -gt 0) {
+            foreach ($err in $jobErrors) {
+                Write-ColorOutput "Parallel fetch error - $err" "Red"
+            }
+            Write-ColorOutput "Falling back to sequential fetch..." "Yellow"
+
+            # Clean up failed jobs
+            $allJobs | ForEach-Object { Remove-Job -Job $_.Job -Force -ErrorAction SilentlyContinue }
+
+            # Sequential fallback
+            $autopilotDevices = Get-GraphPagedResults -Uri "https://graph.microsoft.com/v1.0/deviceManagement/windowsAutopilotDeviceIdentities" -ActivityName "Fetching Autopilot devices"
+            $allIntuneDevices = Get-GraphPagedResults -Uri "https://graph.microsoft.com/v1.0/deviceManagement/managedDevices" -ActivityName "Fetching Intune devices"
+            $allEntraDevices = Get-GraphPagedResults -Uri "https://graph.microsoft.com/v1.0/devices" -ActivityName "Fetching Entra ID devices"
+        } else {
+            $autopilotResult = Receive-Job -Job $autopilotJob -Wait
+            $intuneResult = Receive-Job -Job $intuneJob -Wait
+            $entraResult = Receive-Job -Job $entraJob -Wait
+
+            $autopilotDevices = $autopilotResult.Results
+            $allIntuneDevices = $intuneResult.Results
+            $allEntraDevices = $entraResult.Results
+
+            $allJobs | ForEach-Object { Remove-Job -Job $_.Job -Force -ErrorAction SilentlyContinue }
+        }
+
+        Write-ColorOutput "Found $($autopilotDevices.Count) Autopilot devices" "Green"
+        Write-ColorOutput "Found $($allIntuneDevices.Count) Intune devices" "Green"
+        Write-ColorOutput "Found $($allEntraDevices.Count) Entra ID devices" "Green"
+    } else {
+        # PowerShell 5.1: Sequential fetch with progress bars
+        Write-ColorOutput "Fetching all Autopilot devices..." "Yellow"
+        $autopilotDevices = Get-GraphPagedResults -Uri "https://graph.microsoft.com/v1.0/deviceManagement/windowsAutopilotDeviceIdentities" -ActivityName "Fetching Autopilot devices"
+        Write-ColorOutput "Found $($autopilotDevices.Count) Autopilot devices" "Green"
+
+        Write-ColorOutput "Fetching all Intune devices..." "Yellow"
+        $allIntuneDevices = Get-GraphPagedResults -Uri "https://graph.microsoft.com/v1.0/deviceManagement/managedDevices" -ActivityName "Fetching Intune devices"
+        Write-ColorOutput "Found $($allIntuneDevices.Count) Intune devices" "Green"
+
+        Write-ColorOutput "Fetching all Entra ID devices..." "Yellow"
+        $allEntraDevices = Get-GraphPagedResults -Uri "https://graph.microsoft.com/v1.0/devices" -ActivityName "Fetching Entra ID devices"
+        Write-ColorOutput "Found $($allEntraDevices.Count) Entra ID devices" "Green"
+    }
 
     if ($autopilotDevices.Count -eq 0) {
         Write-ColorOutput "No Autopilot devices found. Exiting." "Red"
         return
     }
-
-    Write-ColorOutput "Fetching all Intune devices..." "Yellow"
-    $allIntuneDevices = Get-GraphPagedResults -Uri "https://graph.microsoft.com/v1.0/deviceManagement/managedDevices"
-    Write-ColorOutput "Found $($allIntuneDevices.Count) Intune devices" "Green"
-
-    Write-ColorOutput "Fetching all Entra ID devices..." "Yellow"
-    $allEntraDevices = Get-GraphPagedResults -Uri "https://graph.microsoft.com/v1.0/devices"
-    Write-ColorOutput "Found $($allEntraDevices.Count) Entra ID devices" "Green"
 
     # Create HashSets/Hashtables for fast lookups
     $intuneBySerial = @{}
@@ -173,9 +286,37 @@
         }
     }
 
-    # Show WPF device selection grid
-    Write-ColorOutput "Opening device selection window..." "Cyan"
-    $selectedDevices = Show-DeviceSelectionGrid -Devices $enrichedDevices
+    # Select devices: by serial number parameter or via WPF grid
+    if ($SerialNumber -and $SerialNumber.Count -gt 0) {
+        Write-ColorOutput "Selecting devices by serial number..." "Cyan"
+        Write-ColorOutput ""
+
+        $selectedDevices = @()
+        $notFoundSerials = @()
+
+        foreach ($sn in $SerialNumber) {
+            $match = $enrichedDevices | Where-Object { $_.SerialNumber -eq $sn }
+            if ($match) {
+                $selectedDevices += $match
+                Write-ColorOutput "  ✓ Found: $($match.DisplayName) ($sn)" "Green"
+            } else {
+                $notFoundSerials += $sn
+                Write-ColorOutput "  ✗ Not found in Autopilot: $sn" "Yellow"
+            }
+        }
+
+        Write-ColorOutput ""
+        if ($notFoundSerials.Count -gt 0) {
+            Write-ColorOutput "$($notFoundSerials.Count) serial number(s) not found in Autopilot" "Yellow"
+        }
+        Write-ColorOutput "Matched $($selectedDevices.Count) of $($SerialNumber.Count) serial number(s)" "Cyan"
+    } else {
+        Write-ColorOutput ""
+        Write-ColorOutput "Opening device selection window..." "Cyan"
+        Write-ColorOutput "  Select the devices you want to remove, then click OK." "Gray"
+        Write-ColorOutput "  Waiting for selection..." "Gray"
+        $selectedDevices = Show-DeviceSelectionGrid -Devices $enrichedDevices
+    }
 
     if (-not $selectedDevices -or $selectedDevices.Count -eq 0) {
         Write-ColorOutput "No devices selected. Exiting." "Yellow"

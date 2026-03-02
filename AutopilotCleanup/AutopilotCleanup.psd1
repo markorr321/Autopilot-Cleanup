@@ -1,11 +1,11 @@
 ﻿@{
     RootModule        = 'AutopilotCleanup.psm1'
-    ModuleVersion     = '2.1.0'
+    ModuleVersion     = '2.2.1'
     GUID              = '2c66f0a3-dcb1-4050-8913-142c0b2991cd'
     Author            = 'Mark Orr'
     CompanyName       = 'Orr365'
     Copyright         = '(c) 2025. All rights reserved.'
-    Description       = 'Bulk removal tool for devices from Windows Autopilot, Microsoft Intune, and Microsoft Entra ID. Features interactive WPF device selection grid, custom app registration support, automatic module installation, serial number validation, real-time deletion monitoring, fast bulk removal with CSV export, and WhatIf mode. Just run Start-AutopilotCleanup after importing.'
+    Description       = 'Bulk removal tool for devices from Windows Autopilot, Microsoft Intune, and Microsoft Entra ID. Features interactive WPF device selection grid, custom app registration support, automatic module installation, serial number validation, real-time deletion monitoring, fast bulk removal with CSV export, direct serial number targeting, parallel API fetching on PowerShell 7+, and WhatIf mode. Just run Start-AutopilotCleanup after importing.'
     PowerShellVersion = '5.1'
 
     # Note: Microsoft.Graph.Authentication is required at runtime but not enforced here
@@ -49,6 +49,17 @@
             ProjectUri = 'https://github.com/markorr321/Autopilot-Cleanup'
 
             ReleaseNotes = @'
+## 2.2.1
+- Per-service progress bars during parallel fetch (page count and record count per service)
+- Terminal indication when WPF device selection window is open
+- Shared concurrent progress tracker for real-time thread job monitoring
+
+## 2.2.0
+- -SerialNumber parameter for direct device targeting (single or multiple), bypasses the WPF grid
+- Parallel API fetching on PowerShell 7+ using thread jobs (Autopilot, Intune, Entra ID fetched concurrently)
+- Automatic fallback to sequential fetch if parallel jobs fail
+- Progress bars during pagination for large tenant data retrieval
+
 ## 2.1.0
 - Custom app registration support (Configure-AutopilotCleanup / Clear-AutopilotCleanupConfig)
 - Start-AutopilotCleanup module entry point

@@ -37,7 +37,10 @@ param(
     [string]$ClientId,
 
     [Parameter(HelpMessage = "Tenant ID to use with the specified app registration")]
-    [string]$TenantId
+    [string]$TenantId,
+
+    [Parameter(HelpMessage = "One or more serial numbers to target for removal. Bypasses the device selection grid.")]
+    [string[]]$SerialNumber
 )
 
 # Import the module from the adjacent directory
@@ -49,6 +52,7 @@ $invokeParams = @{}
 if ($WhatIf) { $invokeParams['WhatIf'] = $true }
 if ($ClientId) { $invokeParams['ClientId'] = $ClientId }
 if ($TenantId) { $invokeParams['TenantId'] = $TenantId }
+if ($SerialNumber) { $invokeParams['SerialNumber'] = $SerialNumber }
 
 # Run the main cleanup function
 Invoke-AutopilotCleanup @invokeParams

@@ -19,11 +19,22 @@ function Start-AutopilotCleanup {
         Tenant ID to use with the specified app registration.
         If not provided, checks AUTOPILOTCLEANUP_TENANTID environment variable.
 
+    .PARAMETER SerialNumber
+        One or more device serial numbers to target for removal.
+        When provided, bypasses the interactive device selection grid and
+        automatically selects the matching devices for the cleanup routine.
+
     .PARAMETER WhatIf
         Preview mode that shows what would be deleted without performing actual deletions.
 
     .EXAMPLE
         Start-AutopilotCleanup
+
+    .EXAMPLE
+        Start-AutopilotCleanup -SerialNumber "ABC1234"
+
+    .EXAMPLE
+        Start-AutopilotCleanup -SerialNumber "ABC1234", "DEF5678", "GHI9012"
 
     .EXAMPLE
         Start-AutopilotCleanup -ClientId "b7463ebe-e5a7-4a1a-ba64-34b99135a27a" -TenantId "51eb883f-451f-4194-b108-4df354b35bf4"
@@ -34,7 +45,10 @@ function Start-AutopilotCleanup {
         [string]$ClientId,
 
         [Parameter(HelpMessage = "Tenant ID to use with the specified app registration")]
-        [string]$TenantId
+        [string]$TenantId,
+
+        [Parameter(HelpMessage = "One or more serial numbers to target for removal. Bypasses the device selection grid.")]
+        [string[]]$SerialNumber
     )
 
     # Check for module updates
@@ -45,6 +59,7 @@ function Start-AutopilotCleanup {
     if ($WhatIfPreference) { $invokeParams['WhatIf'] = $true }
     if ($ClientId) { $invokeParams['ClientId'] = $ClientId }
     if ($TenantId) { $invokeParams['TenantId'] = $TenantId }
+    if ($SerialNumber) { $invokeParams['SerialNumber'] = $SerialNumber }
 
     Invoke-AutopilotCleanup @invokeParams
 }
