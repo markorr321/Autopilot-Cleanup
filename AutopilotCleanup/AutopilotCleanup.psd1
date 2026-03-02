@@ -1,0 +1,74 @@
+﻿@{
+    RootModule        = 'AutopilotCleanup.psm1'
+    ModuleVersion     = '2.1.0'
+    GUID              = '2c66f0a3-dcb1-4050-8913-142c0b2991cd'
+    Author            = 'Mark Orr'
+    CompanyName       = 'Orr365'
+    Copyright         = '(c) 2025. All rights reserved.'
+    Description       = 'Bulk removal tool for devices from Windows Autopilot, Microsoft Intune, and Microsoft Entra ID. Features interactive WPF device selection grid, custom app registration support, automatic module installation, serial number validation, real-time deletion monitoring, fast bulk removal with CSV export, and WhatIf mode. Just run Start-AutopilotCleanup after importing.'
+    PowerShellVersion = '5.1'
+
+    # Note: Microsoft.Graph.Authentication is required at runtime but not enforced here
+    # to allow the module to load and handle installation interactively via Install-RequiredGraphModule
+    RequiredModules   = @()
+
+    FunctionsToExport = @(
+        'Clear-AutopilotCleanupConfig'
+        'Configure-AutopilotCleanup'
+        'Connect-AutopilotGraph'
+        'Get-AllAutopilotDevices'
+        'Get-AutopilotDevice'
+        'Get-EntraDeviceByName'
+        'Get-GraphPagedResults'
+        'Get-IntuneDevice'
+        'Install-RequiredGraphModule'
+        'Invoke-AutopilotCleanup'
+        'Invoke-IntuneDeviceSync'
+        'Invoke-IntuneDeviceWipe'
+        'Remove-AutopilotDevice'
+        'Remove-EntraDevices'
+        'Remove-IntuneDevice'
+        'Show-DeviceSelectionGrid'
+        'Start-AutopilotCleanup'
+        'Test-GraphConnection'
+        'Test-IntuneDeviceRemoved'
+        'Wait-ForDeviceWipe'
+        'Write-ColorOutput'
+    )
+
+    CmdletsToExport   = @()
+    VariablesToExport  = @()
+    AliasesToExport    = @()
+
+    PrivateData = @{
+        PSData = @{
+            Tags = @('Autopilot', 'Intune', 'EntraID', 'DeviceManagement', 'Cleanup', 'MicrosoftGraph', 'Windows', 'Entra', 'DeviceCleanup')
+
+            LicenseUri = 'https://github.com/markorr321/Autopilot-Cleanup/blob/main/LICENSE'
+
+            ProjectUri = 'https://github.com/markorr321/Autopilot-Cleanup'
+
+            ReleaseNotes = @'
+## 2.1.0
+- Custom app registration support (Configure-AutopilotCleanup / Clear-AutopilotCleanupConfig)
+- Start-AutopilotCleanup module entry point
+- Automatic update check from PowerShell Gallery
+- Cleaner console UI - replaced heavy box-drawing with minimal section headers
+
+## 2.0.0
+- PowerShell module architecture (Public/Private function structure)
+- WPF device selection grid with search and multi-select
+- Fast bulk removal mode with CSV export
+- GroupTag filtering
+- Serial number validation
+- Real-time deletion monitoring
+- WhatIf mode
+- Automatic module installation
+'@
+
+            Prerelease = ''
+
+            RequireLicenseAcceptance = $false
+        }
+    }
+}

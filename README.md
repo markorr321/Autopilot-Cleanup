@@ -21,16 +21,17 @@ Interactive PowerShell tool for bulk device cleanup across Windows Autopilot, Mi
 
 ## ✨ New Features
 
-- 🚀 **Fast Bulk Removal Mode** - Supports bulk removal **without status checking**, with results exported to a **CSV** for review  
+- 🔑 **Custom App Registration** - Configure a custom Entra app registration with persistent environment variables via `Configure-AutopilotCleanup` / `Clear-AutopilotCleanupConfig`
+- 🚀 **Start-AutopilotCleanup** - Module entry point command, just like `Start-EntraPIM` — run after `Import-Module AutopilotCleanup`
+- 🔄 **Automatic Update Check** - Checks PowerShell Gallery for newer versions on launch (supports both `Update-Module` and `Update-PSResource`)
+- 🚀 **Fast Bulk Removal Mode** - Supports bulk removal **without status checking**, with results exported to a **CSV** for review
 - 🏷️ **GroupTag Filtering in Out Grid View** - Out-GridView device selection now supports **filtering by GroupTag**
 
 ## 📋 Prerequisites
 
 - PowerShell 5.1 or later
-- Microsoft Graph PowerShell SDK modules (auto-installed if missing):
+- Required module (auto-installed if missing):
   - `Microsoft.Graph.Authentication`
-  - `Microsoft.Graph.DeviceManagement`
-  - `Microsoft.Graph.Identity.DirectoryManagement`
 
 ## 🔐 Required Permissions
 
@@ -52,6 +53,13 @@ cd C:\Autopilot-Cleanup
 .\Autopilot-CleanUp.ps1
 ```
 
+Or import the module and use the `Start-AutopilotCleanup` command:
+
+```powershell
+Import-Module .\AutopilotCleanup
+Start-AutopilotCleanup
+```
+
 ## 🚀 Usage
 
 ### 🎯 Basic Usage
@@ -68,6 +76,35 @@ cd C:\Autopilot-Cleanup
 6. Confirms deletion from all three services
 7. Monitors removal progress in real-time
 
+### 🔑 Custom App Registration
+
+Configure a custom app registration for delegated auth (persists across sessions):
+
+```powershell
+Import-Module .\AutopilotCleanup
+Configure-AutopilotCleanup
+```
+
+Or pass credentials directly:
+
+```powershell
+.\Autopilot-CleanUp.ps1 -ClientId "your-client-id" -TenantId "your-tenant-id"
+```
+
+To clear saved configuration:
+
+```powershell
+Clear-AutopilotCleanupConfig
+```
+
+**Priority order:** command-line parameters > environment variables > default auth flow
+
+**Required app registration settings:**
+- Platform: Mobile and desktop applications
+- Redirect URI: `http://localhost`
+- Allow public client flows: Yes
+- API Permissions (delegated): `Device.ReadWrite.All`, `DeviceManagementManagedDevices.ReadWrite.All`, `DeviceManagementManagedDevices.PrivilegedOperations.All`, `DeviceManagementServiceConfig.ReadWrite.All`
+
 ### 🧪 WhatIf Mode (Test Run)
 
 Preview what would be deleted without making actual changes:
@@ -81,6 +118,8 @@ Preview what would be deleted without making actual changes:
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `-WhatIf` | Switch | No | Preview mode - shows what would be deleted without performing actual deletions |
+| `-ClientId` | String | No | Client ID of a custom app registration for delegated auth |
+| `-TenantId` | String | No | Tenant ID to use with the custom app registration |
 
 ## 🔧 How It Works
 
@@ -125,32 +164,36 @@ The Out-GridView displays the following information:
 ## 📺 Example Output
 
 ```
-=================================================
-    Intune and Autopilot Offboarding PS1
-=================================================
+[ A U T O P I L O T   C L E A N U P ]  v2.0.0
+    with PowerShell
+
+Auth: Default Microsoft Graph (delegated)
 
 Checking required PowerShell modules...
 ✓ Module 'Microsoft.Graph.Authentication' is already installed
-✓ Module 'Microsoft.Graph.DeviceManagement' is already installed
-✓ Module 'Microsoft.Graph.Identity.DirectoryManagement' is already installed
 All required modules are installed.
 
 Connecting to Microsoft Graph...
 ✓ Successfully connected to Microsoft Graph
 
-Retrieving all Autopilot devices...
+Fetching all Autopilot devices...
 Found 15 Autopilot devices
 
-Enriching device information...
+Processing: DESKTOP-ABC123 (Serial: 1234-5678-9012)
+------------------------------
 
-✓ Successfully queued device DESKTOP-ABC123 for removal from Intune
-✓ Successfully queued device DESKTOP-ABC123 for removal from Autopilot
-✓ Successfully queued device DESKTOP-ABC123 for removal from Entra ID
+Step 1: Removing from Intune...
+✓ Successfully queued device for removal from Intune
 
-Monitoring device removal...
-✓ Device removed from Intune
-✓ Device removed from Autopilot
-✓ Device removed from Entra ID
+Step 2: Removing from Autopilot...
+✓ Successfully queued device for removal from Autopilot
+
+Step 3: Removing from Entra ID...
+✓ Successfully queued device for removal from Entra ID
+
+✓ Device successfully removed
+  Name:           DESKTOP-ABC123
+  Serial Number:  1234-5678-9012
 ```
 
 ## ⚠️ Important Notes
@@ -184,7 +227,21 @@ Monitoring device removal...
 - Check Azure portal to verify deletion status
 - Script will timeout after 30 minutes of monitoring
 
+## ⚙️ Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `AUTOPILOTCLEANUP_CLIENTID` | Saved app registration Client ID (set via `Configure-AutopilotCleanup`) |
+| `AUTOPILOTCLEANUP_TENANTID` | Saved Tenant ID (set via `Configure-AutopilotCleanup`) |
+| `AUTOPILOTCLEANUP_DISABLE_UPDATE_CHECK` | Set to `true` to skip the update check on launch |
+
 ## 📜 Version History
+
+**Version 2.1**
+- Custom app registration support (`Configure-AutopilotCleanup` / `Clear-AutopilotCleanupConfig`)
+- `Start-AutopilotCleanup` module entry point
+- Automatic update check from PowerShell Gallery
+- Cleaner console UI
 
 **Version 2.0**
 - Enhanced description and documentation
