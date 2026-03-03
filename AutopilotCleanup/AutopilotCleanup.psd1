@@ -1,12 +1,12 @@
 ﻿@{
     RootModule        = 'AutopilotCleanup.psm1'
-    ModuleVersion     = '2.2.3'
+    ModuleVersion     = '2.2.4'
     GUID              = '2c66f0a3-dcb1-4050-8913-142c0b2991cd'
     Author            = 'Mark Orr'
     CompanyName       = 'Orr365'
     Copyright         = '(c) 2025. All rights reserved.'
     Description       = 'Bulk removal tool for devices from Windows Autopilot, Microsoft Intune, and Microsoft Entra ID. Features interactive WPF device selection grid, custom app registration support, automatic module installation, serial number validation, real-time deletion monitoring, fast bulk removal with CSV export, direct serial number targeting, parallel API fetching on PowerShell 7+, and WhatIf mode. Just run Start-AutopilotCleanup after importing.'
-    PowerShellVersion = '5.1'
+    PowerShellVersion = '7.0'
 
     # Note: Microsoft.Graph.Authentication is required at runtime but not enforced here
     # to allow the module to load and handle installation interactively via Install-RequiredGraphModule
@@ -49,6 +49,10 @@
             ProjectUri = 'https://github.com/markorr321/Autopilot-Cleanup'
 
             ReleaseNotes = @'
+## 2.2.4
+- Minimum PowerShell version updated to 7.0
+- README updates: consolidated features list, updated version history and example output
+
 ## 2.2.3
 - Targeted API queries for -SerialNumber (no longer fetches entire tenant)
 - WPF grid performance improvements (UI virtualization, CollectionView filtering, search debounce)
