@@ -1,6 +1,6 @@
 ﻿@{
     RootModule        = 'AutopilotCleanup.psm1'
-    ModuleVersion     = '2.2.4'
+    ModuleVersion     = '2.2.5'
     GUID              = '2c66f0a3-dcb1-4050-8913-142c0b2991cd'
     Author            = 'Mark Orr'
     CompanyName       = 'Orr365'
@@ -49,6 +49,13 @@
             ProjectUri = 'https://github.com/markorr321/Autopilot-Cleanup'
 
             ReleaseNotes = @'
+## 2.2.5
+- Entra ID removal is now treated as immediate instead of being polled - the
+  monitoring loop no longer waits on a Graph read-back that lags the delete,
+  which could stall cleanup until the 30 minute timeout
+- Removal status for Entra ID is reported inline, including a "not found" skip
+- Update check now runs from Invoke-AutopilotCleanup so it applies to both entry points
+
 ## 2.2.4
 - Minimum PowerShell version updated to 7.0
 - README updates: consolidated features list, updated version history and example output

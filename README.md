@@ -170,7 +170,7 @@ The Out-GridView displays the following information:
 ## 📺 Example Output
 
 ```
-[ A U T O P I L O T   C L E A N U P ]  v2.2.4
+[ A U T O P I L O T   C L E A N U P ]  v2.2.5
     with PowerShell
 
 Auth: Default Microsoft Graph (delegated)
@@ -242,6 +242,11 @@ Step 3: Removing from Entra ID...
 | `AUTOPILOTCLEANUP_DISABLE_UPDATE_CHECK` | Set to `true` to skip the update check on launch |
 
 ## 📜 Version History
+
+**Version 2.2.5**
+- Entra ID removal is now treated as immediate instead of being polled - the monitoring loop no longer waits on a Graph read-back that lags the delete, which could stall cleanup until the 30 minute timeout
+- Removal status for Entra ID is reported inline, including a "not found" skip
+- Update check now runs from `Invoke-AutopilotCleanup` so it applies to both entry points
 
 **Version 2.2.4**
 - Minimum PowerShell version updated to 7.0
